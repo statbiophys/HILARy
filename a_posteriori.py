@@ -53,16 +53,15 @@ def edit_distance(df,result='RESULT'):
 
 
 def evaluation(args): 
-    l,filename = args
+    l,filename1,filename2 = args
     sens_ = []
     spec_ = []
     prec_ = []
     vi_ = []
     dist_ = [] 
     for dataset in np.arange(1,10+1,1):
-        filename = 'synthetic_families/families_cdr3l_{}_1e5_set_{}.csv.gz'.format(l,dataset)
-        df = pd.read_csv(filename,usecols=['FAMILY','V_GENE','J_GENE','CDR3_LENGTH'])
-        result = pd.read_csv(filename, index_col='ID')
+        df = pd.read_csv(filename1,usecols=['FAMILY','V_GENE','J_GENE','CDR3_LENGTH'])
+        result = pd.read_csv(filename2, index_col='ID')
         test = pd.concat([df, result], axis=1)
         test['RESULT'] = test['CLONE']
         test.dropna(inplace=True)
