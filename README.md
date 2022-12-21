@@ -43,4 +43,4 @@ See `inference.ipynb` for example pipeline.
 
 ### Contact
 
-Email [natanael.spisak@gmail.com](emailto:natanael.spisak@gmail.com)
+Email [natanael.spisak@gmail.com](mailto:natanael.spisak@gmail.com)
