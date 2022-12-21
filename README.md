@@ -9,9 +9,9 @@ This package implements the methods described in [Combining mutation and recombi
 
 1. A priori estimation of prevalence, the fraction of pairs in the dataset linking sequences belonging to the same clonal family (module `a_priori.py`).
 
-2. Fast CDR3-based clustering with fixed precision/sensitivity (module `first_inference.py`).
+2. Fast CDR3-based clustering with fixed precision/sensitivity (class `CDR3Clustering` in module `inference.py`).
 
-3. Full method relying on information encoded in the CDR3 as well as phylogenetic signal encoded outside the CDR3 (module `second_inference.py`).
+3. Full method relying on information encoded in the CDR3 as well as phylogenetic signal encoded outside the CDR3 (class `Inference` in module `inference.py`).
 
 4. Evaluation of inference results (module `a_posteriori.py`)
 
