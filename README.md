@@ -5,7 +5,7 @@ Python package for high-precision inference of lineages in antibody repertoires 
 
 ### Methods
 
-This package implements the methods described in [Combining mutation and recombination statistics to infer clonal families in antibody repertoires](https://github.com/statbiophys/HILARy), including:
+This package implements the methods described in [Combining mutation and recombination statistics to infer clonal families in antibody repertoires](https://doi.org/10.1101/2022.12.22.521661), including:
 
 1. A priori estimation of prevalence, the fraction of pairs in the dataset linking sequences belonging to the same clonal family (module `a_priori.py`).
 
