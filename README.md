@@ -7,13 +7,13 @@ Python package for high-precision inference of lineages in antibody repertoires 
 
 This package implements the methods described in [Combining mutation and recombination statistics to infer clonal families in antibody repertoires](https://doi.org/10.1101/2022.12.22.521661), including:
 
-1. A priori estimation of prevalence, the fraction of pairs in the dataset linking sequences belonging to the same clonal family (module `a_priori.py`).
+1. A priori estimation of prevalence, the fraction of pairs in the dataset linking sequences belonging to the same clonal family (module `apriori.py`).
 
 2. Fast CDR3-based clustering with fixed precision/sensitivity (class `CDR3Clustering` in module `inference.py`).
 
-3. Full method relying on information encoded in the CDR3 as well as phylogenetic signal encoded outside the CDR3 (class `Inference` in module `inference.py`).
+3. Full method relying on information encoded in the CDR3 as well as phylogenetic signal encoded outside the CDR3 (class `HILARy` in module `inference.py`).
 
-4. Evaluation of inference results (module `a_posteriori.py`)
+4. Evaluation of inference results (module `aposteriori.py`)
 
 ### Prerequisites 
 
