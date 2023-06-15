@@ -150,7 +150,7 @@ class Null():
         return self.z_cdf[int(self.size*self.pRequired(rho))]
     
 class HILARy():
-    """ Infer families using CDR3 and mutations """
+    """ Infer families using CDR3 and mutation information """
     def __init__(self,apriori,threads=None):
         if threads is None: self.threads = cpu_count()
         else: self.threads = threads

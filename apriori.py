@@ -94,8 +94,10 @@ class EM():
     def discreteMix(self,x,theta):
         """ Evaluate mixture distribution """
         rho,mu = theta
-        if self.positives == 'geometric': return rho/(mu+1) * (mu/(mu+1))**x + (1-rho)*self.constP0[x]
-        if self.positives == 'poisson':   return rho * mu**x * np.exp(-mu) / factorial(x) + (1-rho)*self.constP0[x]
+        if self.positives == 'geometric': 
+            return rho/(mu+1) * (mu/(mu+1))**x + (1-rho)*self.constP0[x]
+        if self.positives == 'poisson':   
+            return rho * mu**x * np.exp(-mu) / factorial(x) + (1-rho)*self.constP0[x]
     
     def error(self,theta,threshold=0.15,error='rrmse'):
         """ Estimate goodness of fit
@@ -154,8 +156,12 @@ class Apriori():
         extra_js = extra_vs
         
         columns = self.by + ['sequence_count','pair_count']
-        VJlclasses = pd.DataFrame(np.array([vs,js,ls,vjl_sequence_count,vjl_pair_count]).T,columns=columns)
-        lclasses = pd.DataFrame(np.array([extra_vs,extra_js,extra_ls,l_sequence_count,l_pair_count]).T,columns=columns)
+        VJlclasses = pd.DataFrame(np.array([vs,js,ls,
+                                            vjl_sequence_count,
+                                            vjl_pair_count]).T,columns=columns)
+        lclasses = pd.DataFrame(np.array([extra_vs,extra_js,extra_ls,
+                                          l_sequence_count,
+                                          l_pair_count]).T,columns=columns)
         self.classes = pd.concat([VJlclasses,lclasses],
                                  ignore_index=True).astype({'v_gene': 'str',
                                                             'j_gene': 'str',
@@ -191,7 +197,9 @@ class Apriori():
         """ Compute histograms for all large l classes """  
         histograms = []
         class_ids = []
-        loc = self.classes['cdr3_length'].isin(self.lengths) & (self.classes['v_gene']=='None') & (self.classes['pair_count']>=self.nmin)
+        loc = self.classes['cdr3_length'].isin(self.lengths) 
+        loc = loc& (self.classes['v_gene']=='None') 
+        loc = loc& (self.classes['pair_count']>=self.nmin)
         for _,row in tqdm(self.classes.loc[loc].iterrows()):
             frac = min(np.sqrt(self.nmax/row.pair_count),1)
             h = self.l2x(df[self.use].loc[df['cdr3_length']==row.cdr3_length].sample(frac=frac),row.cdr3_length)
@@ -211,7 +219,9 @@ class Apriori():
     
     def computeAllVJl(self,df):
         """ Compute histograms for all large VJl classes """
-        loc = self.classes['cdr3_length'].isin(self.lengths) & (self.classes['v_gene']!='None') & (self.classes['pair_count']>=self.nmin)
+        loc = self.classes['cdr3_length'].isin(self.lengths) 
+        loc = loc& (self.classes['v_gene']!='None') 
+        loc = loc& (self.classes['pair_count']>=self.nmin)
         groups = df.loc[self.loc].groupby(self.by)
         results = applyParallel([(row.class_id,
                                   groups.get_group((row.v_gene,
@@ -275,7 +285,9 @@ class Apriori():
         self.classes['prevalence'] = self.parameters[['rho_poisson','rho_geo']].min(axis=1)
         self.classes['mean_distance'] = self.parameters['mu_poisson']/self.classes['cdr3_length']#^
         
-        loc = (self.classes['v_gene']=='None') & (~self.classes['prevalence'].isna()) & (~self.classes['mean_distance'].isna())
+        loc = (self.classes['v_gene']=='None') 
+        loc = loc& (~self.classes['prevalence'].isna()) 
+        loc = loc& (~self.classes['mean_distance'].isna())
         ns = self.classes.loc[loc]['pair_count']
         rhos = self.classes.loc[loc]['prevalence']
         mus = self.classes.loc[loc]['mean_distance']
