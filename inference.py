@@ -1,17 +1,20 @@
+import os
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import squareform
 from scipy.cluster.hierarchy import fcluster, linkage
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
-#from atriegc import TrieNucl as Trie
-from atriegc import Trie
+from atriegc import TrieNucl as Trie
+#from atriegc import Trie
 from numpy import random
+from itertools import combinations
+from textdistance import hamming
 
 class CDR3Clustering():
     """ Infer families using CDR3 """
     def __init__(self,thresholds,threads=None):
-        if threads is None: self.threads = cpu_count()
+        if threads is None: self.threads = cpu_count()-1
         else: self.threads = threads
         self.thresholds = thresholds
     
@@ -42,7 +45,7 @@ class CDR3Clustering():
 
 class DistanceMatrix():
     def __init__(self,v,j,l,sens,df,threads=None):
-        if threads is None: self.threads = cpu_count()
+        if threads is None: self.threads = cpu_count()-1
         else: self.threads = threads
         self.l = l
         self.L = 250
@@ -135,7 +138,8 @@ class Null():
             
     def readNull(self,l):
         """ Read estimated null distribution """
-        cdfs = pd.read_csv('cdfs_{}.csv'.format(self.model))
+        dirname = os.path.dirname(__file__)
+        cdfs = pd.read_csv(dirname + '/data/cdfs_{}.csv'.format(self.model))
         cdf = cdfs.loc[cdfs['l']==l].values[0,1:l+1]
         return np.diff(cdf,prepend=[0],append=[1])
 
@@ -156,12 +160,12 @@ class HILARy():
         loc = loc&(apriori.classes['v_gene']!="None")
         loc = loc&(apriori.classes['precise_threshold']<apriori.classes['sensitive_threshold'])
         loc = loc&(apriori.classes['pair_count']>0)
-        self.left = apriori.classes.loc[loc].groupby(by).first().pair_count
+        self.left = apriori.classes.loc[loc].groupby(self.group).first().pair_count
         
-        self.use = ['cdr3','alt_sequence_alignment','nb_mutations','index']
+        self.use = ['cdr3','alt_sequence_alignment','mutation_count','index']
         self.alignment_length=250
-        self.x0=0
-        self.y0=0
+        self.x0=0.
+        self.y0=0.
         self.productive = apriori.productive
         
     def applyParallel(self,dfGrouped,func):
@@ -171,13 +175,12 @@ class HILARy():
 
     def singleLinkage(self,indices,dist,threshold):
         clusters = fcluster(linkage(dist,
-                                    method='single',
-                                    metric='precomputed'),
+                                    method='single'),
                             criterion='distance',
                             t=threshold)
         return {i:c for i,c in zip(indices, clusters)}
 
-    def class2pairs(self.args):
+    def class2pairs(self,args):
         (v,j,l,_),df = args
         indices = np.unique(df['precise_cluster'])
         if len(indices)>1:
@@ -187,7 +190,7 @@ class HILARy():
             distanceMatrix = np.ones((dim,dim),dtype=float)*(200)
             for i in range(dim): distanceMatrix[i,i]=0
 
-            for (cdr31,s1,n1,i1),(cdr32,s2,n2,i2) in combinations(df[use].values,2):
+            for (cdr31,s1,n1,i1),(cdr32,s2,n2,i2) in combinations(df[self.use].values,2):
                 if i1!=i2:
                     n1n2 = n1*n2
                     if n1n2>0:
@@ -195,20 +198,22 @@ class HILARy():
                         nL = hamming(s1,s2)
                         n0 = (n1+n2 - nL)/2
 
-                        exp_n = l/alignment_length * (nL+1)
-                        std_n = np.sqrt(exp_n * (l+alignment_length)/alignment_length)
+                        exp_n = l/self.alignment_length * (nL+1)
+                        std_n = np.sqrt(exp_n * (l+self.alignment_length)/self.alignment_length)
 
-                        exp_n0 = n1n2/alignment_length
+                        exp_n0 = n1n2/self.alignment_length
                         std_n0 = np.sqrt(exp_n0)
 
                         x = (n - exp_n)/std_n
                         y = (n0 - exp_n0)/std_n0
-                        distance = x-y+100
+                        distance = x-y+100.
 
                         distanceMatrix[i1,i2] = distance
                         distanceMatrix[i2,i1] = distance
 
-            sl = singleLinkage(indices,distanceMatrix,threshold=x0-y0+100)
+            sl = self.singleLinkage(indices,
+                                    squareform(distanceMatrix),
+                                    threshold=self.x0-self.y0+100.)
             return df['precise_cluster'].map(sl)
         else:
             return df['precise_cluster']
@@ -219,7 +224,7 @@ class HILARy():
 
     def to_do(self,df,size_threshold=1e3):
         df['to_resolve'] = True
-        df['to_resolve'] = self.applyParallel([(g,df.groupby(self.group).get_group(g)) for g in left.index],
+        df['to_resolve'] = self.applyParallel([(g,df.groupby(self.group).get_group(g)) for g in self.left.index],
                                               self.mark_class)
         df.fillna(value={'to_resolve': False}, inplace=True)
         dfGrouped = df.loc[df['to_resolve']].groupby(self.group + ['sensitive_cluster'])
@@ -230,14 +235,13 @@ class HILARy():
 
         
     def infer(self,df):
-        dfGrouped = df.loc[self.productive].groupby(['v_gene',
-                                           'j_gene',
-                                           'cdr3_length',
-                                           'sensitive_cluster'])
-        df['family_cluster'] = applyParallel([(g,dfGrouped.get_group(g)) for g in self.small_to_do],class2pairs)
-        for g in large:
-            dm = DistanceMatrix(*g,dfGrouped.get_group(g)[['cdr3','alt_sequence_alignment','nb_mutations','precise_cluster']])
+        dfGrouped = df.loc[self.productive].groupby(self.group + ['sensitive_cluster'])
+        df['family_cluster'] = self.applyParallel([(g,dfGrouped.get_group(g)) for g in self.small_to_do],self.class2pairs)
+        for g in self.large_to_do:
+            dm = DistanceMatrix(*g,dfGrouped.get_group(g)[['cdr3','alt_sequence_alignment','mutation_count','precise_cluster']])
             d = dm.compute()
-            shift = min(d)
-            dct = self.singleLinkage(dfGrouped.get_group(g).index,d+shift,0.1+shift)
+            dct = self.singleLinkage(dfGrouped.get_group(g).index,d,self.x0-self.y0+100.)
             df['family_cluster'] = df.index.map(dct)
+            
+        df.fillna(value={'family_cluster': 0}, inplace=True)
+        return df.loc[self.productive].groupby(self.group + ['sensitive_cluster','family_cluster']).ngroup()+1

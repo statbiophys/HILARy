@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 pd.set_option('mode.chained_assignment', None)
@@ -9,8 +10,9 @@ from tqdm import tqdm
 from scipy.special import factorial
 from scipy import interpolate
 
-def applyParallel(dfGrouped, func, silent=False):
-    with Pool(cpu_count()) as p:
+def applyParallel(dfGrouped, func, silent=False, cpuCount=None):
+    if cpuCount is None: cpuCount = cpu_count()
+    with Pool(cpuCount) as p:
         ret_list = list(tqdm(p.imap(func, dfGrouped),total=len(dfGrouped),disable=silent))
     return pd.concat(ret_list)
 
@@ -58,7 +60,8 @@ class EM():
             
     def readNull(self):
         """ Read estimated null distribution """
-        cdfs = pd.read_csv('cdfs_{}.csv'.format(self.model))
+        dirname = os.path.dirname(__file__)
+        cdfs = pd.read_csv(dirname + '/data/cdfs_{}.csv'.format(self.model))
         cdf = cdfs.loc[cdfs['l']==self.l].values[0,1:self.l+1]
         return np.diff(cdf,prepend=[0],append=[1])
     
@@ -120,7 +123,7 @@ class EM():
 class Apriori():
     """ Computes statistics of pairwise distances """
     
-    def __init__(self, df, lengths=None, default_length=None, nmin=1e5, nmax=1e5):
+    def __init__(self, df, lengths=None, default_length=None, nmin=1e5, nmax=1e5, threads=None):
         if lengths is None: self.lengths = np.arange(15,81+3,3).astype(int)
         else: self.lengths = lengths
         if default_length is None: self.default_length = 45
@@ -128,7 +131,9 @@ class Apriori():
         self.bins = range(self.lengths[-1]+2)
         self.nmin = int(nmin)
         self.nmax = int(nmax)
-        
+        if threads is None: self.threads = cpu_count()-1
+        else: self.threads = threads
+
         self.productive = (df['cdr3_length']%3==0)&(df['cdr3_length']>=15)
         self.loc = df.loc[self.productive]['cdr3_length'].isin(self.lengths)
         self.by = ['v_gene','j_gene','cdr3_length']
@@ -178,7 +183,8 @@ class Apriori():
         """ Compute histogram of distances within l class """
         x = applyParallel(df.groupby(self.by),
                           self.vjl2x,
-                          silent=True)
+                          silent=True,
+                          cpuCount=self.threads)
         return np.histogram(x.x,bins=self.bins,density=False)[0]
 
     def computeAlll(self,df):
@@ -212,7 +218,8 @@ class Apriori():
                                                     row.j_gene,
                                                     row.cdr3_length)).sample(frac=min(np.sqrt(self.nmax/row.pair_count),
                                                                                       1))) for _,row in self.classes.loc[loc].iterrows()],
-                                self.vjls2x)
+                                self.vjls2x,
+                                cpuCount=self.threads)
         results['class_id'] = results.index
         return results
     
@@ -261,7 +268,8 @@ class Apriori():
 
     def get_parameters(self):
         self.parameters = applyParallel(self.histograms.groupby(['class_id']),
-                                        self.estimate).reset_index(drop=True)
+                                        self.estimate,
+                                        cpuCount=self.threads).reset_index(drop=True)
         self.classes.index=self.classes.class_id
         self.parameters.index=self.parameters.class_id
         self.classes['prevalence'] = self.parameters[['rho_poisson','rho_geo']].min(axis=1)
@@ -276,8 +284,12 @@ class Apriori():
         self.mean_prevalence = sum(ws*rhos)
         self.mean_mean_distance = sum(ws*mus)
         
-        self.classes['effective_prevalence'] = applyParallel(self.classes.groupby(['cdr3_length']),self.assign_prevalence)
-        self.classes['effective_mean_distance'] = applyParallel(self.classes.groupby(['cdr3_length']),self.assign_mean_distance)
+        self.classes['effective_prevalence'] = applyParallel(self.classes.groupby(['cdr3_length']),
+                                                             self.assign_prevalence,
+                                                             cpuCount=self.threads)
+        self.classes['effective_mean_distance'] = applyParallel(self.classes.groupby(['cdr3_length']),
+                                                                self.assign_mean_distance,
+                                                                cpuCount=self.threads)
         
     def assign_precise_thresholds(self,args):
         l,ldf = args
@@ -311,7 +323,12 @@ class Apriori():
         self.precision = precision
         self.sensitivity = sensitivity
         
-        self.cdfs = pd.read_csv('cdfs_{}.csv'.format(model))
+        dirname = os.path.dirname(__file__)
+        self.cdfs = pd.read_csv(dirname + '/data/cdfs_{}.csv'.format(model))
         
-        self.classes['precise_threshold'] = applyParallel(self.classes.groupby(['cdr3_length']),self.assign_precise_thresholds)
-        self.classes['sensitive_threshold'] = applyParallel(self.classes.groupby(['cdr3_length']),self.assign_sensitive_thresholds)
+        self.classes['precise_threshold'] = applyParallel(self.classes.groupby(['cdr3_length']),
+                                                          self.assign_precise_thresholds,
+                                                          cpuCount=self.threads)
+        self.classes['sensitive_threshold'] = applyParallel(self.classes.groupby(['cdr3_length']),
+                                                            self.assign_sensitive_thresholds,
+                                                            cpuCount=self.threads)
