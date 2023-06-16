@@ -78,7 +78,11 @@ class Compatible():
     def df2airr(self,df):
         df.dropna(inplace=True)
         df['cdr3_length'] = df['cdr3_nt'].str.len()
-        loc = (df['chain']=='heavy') & (df['productive']=='yes') & (df['isotype'].str.startswith('IgG')) & (df['v_start']<self.offset_v) 
+        loc = (df['chain']=='heavy') 
+        loc = loc& (df['productive']=='yes') 
+        loc = loc& (df['isotype'].str.startswith('IgG')) 
+        loc = loc& (df['v_start']<self.offset_v) 
         return applyParallel(df.loc[loc].groupby(self.by),
                              self.group2airr,
+                             silent=True,
                              cpuCount=self.threads).rename(columns=self.rename)

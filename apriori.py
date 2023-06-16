@@ -317,7 +317,7 @@ class Apriori():
             cdf0 = f(bins/l)
         cdf1 = (np.array([mu**bins* np.exp(-mu) for mu in mus])/factorial(bins)).cumsum(axis=1)
         ps = cdf0/cdf1
-        t_prec = np.array([p<rho/(1-rho)*(1-self.precision)/self.precision for p,rho in zip(ps,rhos)]).sum(axis=1)-1
+        t_prec = np.array([p<rho/(1+1e-5-rho)*(1-self.precision)/self.precision for p,rho in zip(ps,rhos)]).sum(axis=1)-1
         t_sens = (cdf1<self.sensitivity).sum(axis=1)
         ldf['precise_threshold'] = np.min([t_prec,t_sens],axis=0)
         return ldf['precise_threshold'] 
