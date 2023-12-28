@@ -1,0 +1,10 @@
+# MANIFEST.in
+# Control the files included or not in the source distribution
+# For further information, see
+# https://packaging.python.org/guides/using-manifest-in/
+
+# Mandatory files
+include LICENSE CHANGELOG
+
+# Source code, including tests config files
+graft data
