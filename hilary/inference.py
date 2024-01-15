@@ -362,16 +362,14 @@ class HILARy:
         small_to_do = sizes[~mask].index
         return small_to_do, large_to_do
 
-    def infer(self, small_to_do: pd.DataFrame, large_to_do: pd.DataFrame) -> None:
+    def infer(self) -> None:
         """Infer family clusters.
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
-
-        Args:
-            small_to_do (pd.DataFrame): Indices of small sensitive clusters.
-            large_to_do (pd.DataFrame): Indices of large sensitive clusters.
         """
+
+        small_to_do, large_to_do = self.to_do()
         dfGrouped = self.df.groupby(self.group + ["sensitive_cluster"])
         log.debug(
             "Grouping precise clusters together to reach desired sensitivity.",

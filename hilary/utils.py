@@ -52,7 +52,19 @@ def preprocess(
     lengths=np.arange(15, 81 + 3, 3).astype(int),
     silent: bool = False,
 ):
-    df = dataframe.copy()
+    df = dataframe.copy()[
+        [
+        "sequence_id",
+        "v_call",
+        "j_call",
+        "junction",
+        "v_sequence_alignment",
+        "j_sequence_alignment",
+        "v_germline_alignment",
+        "j_germline_alignment",
+        ]
+    ]
+    df = df.dropna()
     usecols = [
         "sequence_id",
         "v_gene",
@@ -63,7 +75,7 @@ def preprocess(
         "alt_germline_alignment",
         "mutation_count",
     ]
-
+    print(df)
     if "v_gene" not in df.columns:
         df[["v_gene", "_"]] = df["v_call"].str.split("*", expand=True)
     if "j_gene" not in df.columns:
@@ -78,6 +90,7 @@ def preprocess(
     df["alt_germline_alignment"] = (
         df["v_germline_alignment"] + df["j_germline_alignment"]
     )
+
     df["mutation_count"] = applyParallel(
         df.groupby(["v_gene", "j_gene", "cdr3_length"]),
         count_mutations,
@@ -85,9 +98,10 @@ def preprocess(
     )
     log.debug(
         "Filtering sequences",
-        criteria_one="CDR3 length not multiple of three",
-        criteria_two="CDR3 length not in [15,81]",
+        criteria_one="CDR3 length not multiple of three.",
+        criteria_two="CDR3 length not in [15,81].",
         criteria_three="More than 60 sequence mutations from germline.",
+        criteria_four="With a null column value.",
     )
     return df.query(
         "cdr3_length in @lengths and mutation_count <= @max_mutation_count",

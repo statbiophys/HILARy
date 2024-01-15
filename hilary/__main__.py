@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from multiprocessing import cpu_count
 from pathlib import Path
-
 import pandas as pd
 import structlog
 import typer
+import json
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
@@ -63,6 +63,18 @@ def main(
         "--silent",
         help="Do not show progress bars if used.",
     ),
+    result_folder: Path = typer.Option(
+        None,
+        "--result-folder",
+        help="""Where to save the result files. By default it will be saved in a 'result/'
+            folder in input data's parent directory.""",
+    ),
+    config: Path = typer.Option(
+        None,
+        "--config",
+        help="""Configuration file for column names. File should be a json with keys as your data's
+            column names and values as hilary's required column names.""",
+    ),
 ) -> None:
     """Infer lineages from data_path excel file.
 
@@ -76,13 +88,18 @@ def main(
         model (int, optional): Model name to infer Null distribution, defaults to 326713.
         silent (bool,optional): Do not show progress bars if used.
     """
+    if result_folder is None:
+        result_folder = data_path.parents[0] / Path("results/")
+    result_folder.mkdir(parents=True, exist_ok=True)
+    debug_folder = result_folder / Path("debug/")
+    debug_folder.mkdir(parents=True, exist_ok=True)
+
     if verbose >= 2:  # noqa: PLR2004
         logging_level = logging.DEBUG
     elif verbose == 1:
         logging_level = logging.INFO
     else:
         logging_level = logging.WARNING
-
     renderer = structlog.dev.ConsoleRenderer(sort_keys=False)
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(logging_level),
@@ -99,11 +116,32 @@ def main(
         "📖 READING DATA 📖.",
         data_path=data_path.as_posix(),
     )
-    dataframe = pd.read_excel(data_path)
+    suffix = data_path.suffix
+    if suffix == ".xlsx":
+        dataframe = pd.read_excel(data_path)
+    elif suffix == ".tsv":
+        dataframe = pd.read_csv(
+            data_path,
+            sep="\t",
+        )
+    else:
+        raise ValueError(
+            f"Format {suffix} not supported. Extensions supported are tsv, xlsx."
+        )
+    if config:
+        with open(config) as user_file:
+            column_dict = json.load(user_file)
+            for key in column_dict:
+                dataframe[column_dict[key]] = dataframe[key]
+
     log.debug("Displaying dataframe columns.", columns=dataframe.columns)
     if logging_level == logging.DEBUG:
-        log.debug("Saving input dataframe.", path="debug_input.xlsx")
-        dataframe.to_excel("debug_input.xlsx")
+        input_path = debug_folder / Path(f"input_{data_path.name}").with_suffix(".xlsx")
+        log.debug(
+            "Saving input dataframe.",
+            path=input_path.as_posix(),
+        )
+        dataframe.to_excel(input_path.as_posix())
     apriori = Apriori(
         dataframe,
         threads=threads,
@@ -114,11 +152,14 @@ def main(
         silent=silent,
     )
     if logging_level == logging.DEBUG:
+        preprocessed_path = debug_folder / Path(
+            f"preprocessed_input_{data_path.name}"
+        ).with_suffix(".xlsx")
         log.debug(
             "Saving dataframe after preprocessing.",
-            path="debug_input_preprocessed.xlsx",
+            path=preprocessed_path.as_posix(),
         )
-        apriori.df.to_excel("debug_input_preprocessed.xlsx")
+        apriori.df.to_excel(preprocessed_path.as_posix())
     log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
     apriori.get_histograms()
     log.info("⏳ COMPUTING PARAMETERS ⏳.")
@@ -128,27 +169,26 @@ def main(
     hilary = HILARy(apriori)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
     hilary.compute_prec_sens_clusters()
-    small_to_do, large_to_do = hilary.to_do()
     log.info("⏳ INFERRING FAMILIES ⏳.")
-    hilary.infer(small_to_do, large_to_do)
+    hilary.infer()
     if logging_level == logging.DEBUG:
+        output_path = debug_folder / Path(
+            f"preprocessed_output_{data_path.name}"
+        ).with_suffix(".xlsx")
         log.debug(
             "Saving dataframe inferred by Hilary.",
-            path="debug_hilary_output.xlsx",
+            path=output_path.as_posix(),
         )
-        hilary.df.to_excel("debug_hilary_output.xlsx")
+        hilary.df.to_excel(output_path)
     mask = ~dataframe.index.isin(hilary.df.index)
     dataframe["family"] = hilary.df["family"]
     dataframe.loc[mask, "family"] = 0
-    output_path = data_path.parents[0] / Path(f"inferred_{data_path.name}").with_suffix(
-        ".xlsx",
+    output_path = result_folder / Path(f"inferred_{data_path.name}").with_suffix(
+        ".xlsx"
     )
     log.info("💾 SAVING RESULTS 💾.", output_path=output_path.as_posix())
-    dataframe.to_excel(
-        data_path.parents[0] / Path(f"inferred_{data_path.name}").with_suffix(".xlsx"),
-    )
+    dataframe.to_excel(output_path)
 
 
 if __name__ == "__main__":
-    """Run app."""
     app()
