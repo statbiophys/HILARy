@@ -94,7 +94,7 @@ def main(
             as your data's column names and values as hilary's required column names.
     """
     if result_folder is None:
-        result_folder = data_path.parents[0] / Path("results/")
+        result_folder = data_path.parents[0] / Path("hilary_results/")
     result_folder.mkdir(parents=True, exist_ok=True)
     debug_folder = result_folder / Path("debug/")
     debug_folder.mkdir(parents=True, exist_ok=True)

@@ -97,7 +97,6 @@ def preprocess(
         "alt_germline_alignment",
         "mutation_count",
     ]
-    print(df)
     if "v_gene" not in df.columns:
         df[["v_gene", "_"]] = df["v_call"].str.split("*", expand=True)
     if "j_gene" not in df.columns:
