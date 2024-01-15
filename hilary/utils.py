@@ -19,17 +19,17 @@ def applyParallel(
     func: Callable,
     cpuCount: int = cpu_count(),
     silent=False,
-):
-    """_summary_
+) -> pd.DataFrame:
+    """Parallely runs func on each group of dfGrouped.
 
     Args:
         dfGrouped (list): Func runs parallely on each element of the list dfGrouped
         func (Callable): Function to run on dfGrouped
-        cpuCount (int, optional): _description_. Defaults to cpu_count().
+        cpuCount (int, optional): Number of cpus to use. Defaults cpu_count() the maximum possible.
         silent (bool): if true do not show progress bars.
 
     Returns:
-        _type_: _description_
+        pd.Dataframe: Dataframe concatenating output of func on each group.
     """
     with Pool(cpuCount) as p:
         ret_list = list(
@@ -38,7 +38,15 @@ def applyParallel(
     return pd.concat(ret_list)
 
 
-def count_mutations(args):
+def count_mutations(args: tuple[int, pd.DataFrame]):
+    """Compute & return Return mutation counts column for a given dataframe.
+
+    Args:
+        args (tuple[int, pd.DataFrame]): _,dataframe of sequences
+
+    Returns:
+        pd.Dataframe: Dataframe with mutation counts.
+    """
     _, df = args
     return df[["alt_sequence_alignment", "alt_germline_alignment"]].apply(
         lambda x: hamming(*x),
@@ -47,21 +55,35 @@ def count_mutations(args):
 
 
 def preprocess(
-    dataframe,
-    max_mutation_count=60,
-    lengths=np.arange(15, 81 + 3, 3).astype(int),
+    dataframe: pd.DataFrame,
+    max_mutation_count: int = 60,
+    lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
     silent: bool = False,
-):
+) -> pd.DataFrame:
+    """Processes input dataframe.
+    Drop nulls, filters for cdr3 length & mutation counts.
+
+    Args:
+        dataframe (pd.DataFrame): Input dataframe of sequences.
+        max_mutation_count (int, optional): Remove sequences with higher mutation count. \
+            Defaults to 60.
+        lengths (np.ndarray, optional): Remove sequences with CDR3 length not in lengths. \
+            Defaults to np.arange(15, 81 + 3, 3).astype(int).
+        silent (bool, optional): Do not show progress bar if true. Defaults to False.
+
+    Returns:
+        pd.Dataframe: processed dataframe.
+    """
     df = dataframe.copy()[
         [
-        "sequence_id",
-        "v_call",
-        "j_call",
-        "junction",
-        "v_sequence_alignment",
-        "j_sequence_alignment",
-        "v_germline_alignment",
-        "j_germline_alignment",
+            "sequence_id",
+            "v_call",
+            "j_call",
+            "junction",
+            "v_sequence_alignment",
+            "j_sequence_alignment",
+            "v_germline_alignment",
+            "j_germline_alignment",
         ]
     ]
     df = df.dropna()
@@ -108,11 +130,14 @@ def preprocess(
     )[usecols].astype({"mutation_count": int, "cdr3_length": int})
 
 
-def create_classes(df):
-    """_summary_
+def create_classes(df: pd.DataFrame) -> pd.Dataframe:
+    """Create VJl classes.
 
     Args:
-        df (_type_): _description_
+        df (pd.DataFrame): Processed dataframe of sequences.
+
+    Returns:
+        pd.DataFrame: Dataframe with classes.
     """
     classes = (
         df.groupby(["v_gene", "j_gene", "cdr3_length"])

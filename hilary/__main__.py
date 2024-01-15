@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
 from multiprocessing import cpu_count
 from pathlib import Path
+
 import pandas as pd
 import structlog
 import typer
-import json
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
@@ -47,7 +48,7 @@ def main(
         help="Choose desired sensitivity.",
     ),
     nmin: int = typer.Option(
-        100000,
+        1,
         "--nmin",
         help="Infer prevalence and mu on classes of size larger than nmin. \
             Mean prevalence is assigned to lower than nmin classes.",
@@ -87,6 +88,10 @@ def main(
         nmin (int, optional): Infer prevalence and mu on classes of size > nmin, defaults to 100000.
         model (int, optional): Model name to infer Null distribution, defaults to 326713.
         silent (bool,optional): Do not show progress bars if used.
+        result_folder (Path): Where to save the result files. By default it will be saved in a \
+            'result/' folder in input data's parent directory.
+        config (Path): Configuration file for column names. File should be a json with keys \
+            as your data's column names and values as hilary's required column names.
     """
     if result_folder is None:
         result_folder = data_path.parents[0] / Path("results/")
@@ -126,7 +131,7 @@ def main(
         )
     else:
         raise ValueError(
-            f"Format {suffix} not supported. Extensions supported are tsv, xlsx."
+            f"Format {suffix} not supported. Extensions supported are tsv, xlsx.",
         )
     if config:
         with open(config) as user_file:
@@ -153,7 +158,7 @@ def main(
     )
     if logging_level == logging.DEBUG:
         preprocessed_path = debug_folder / Path(
-            f"preprocessed_input_{data_path.name}"
+            f"preprocessed_input_{data_path.name}",
         ).with_suffix(".xlsx")
         log.debug(
             "Saving dataframe after preprocessing.",
@@ -173,7 +178,7 @@ def main(
     hilary.infer()
     if logging_level == logging.DEBUG:
         output_path = debug_folder / Path(
-            f"preprocessed_output_{data_path.name}"
+            f"preprocessed_output_{data_path.name}",
         ).with_suffix(".xlsx")
         log.debug(
             "Saving dataframe inferred by Hilary.",
@@ -184,7 +189,7 @@ def main(
     dataframe["family"] = hilary.df["family"]
     dataframe.loc[mask, "family"] = 0
     output_path = result_folder / Path(f"inferred_{data_path.name}").with_suffix(
-        ".xlsx"
+        ".xlsx",
     )
     log.info("💾 SAVING RESULTS 💾.", output_path=output_path.as_posix())
     dataframe.to_excel(output_path)

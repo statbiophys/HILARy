@@ -134,3 +134,6 @@ dmypy.json
 
 __pycache__/
 my_pip_package.egg-info/
+./inference.ipynb
+./.pre-commit-config.yaml
+./.gitignore
