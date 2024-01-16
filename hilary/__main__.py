@@ -134,7 +134,7 @@ def main(
             f"Format {suffix} not supported. Extensions supported are tsv, xlsx.",
         )
     if config:
-        with open(config) as user_file:
+        with open(config, encoding="utf-8") as user_file:
             column_dict = json.load(user_file)
             for key in column_dict:
                 dataframe[column_dict[key]] = dataframe[key]

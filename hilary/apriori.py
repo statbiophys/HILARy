@@ -51,7 +51,7 @@ class Apriori:
             silent (bool) : If true do not to show progress bars.
         """
         self.lengths = lengths
-        self.nmin = nmin
+        self.nmin = max(1000, nmin)
         self.nmax = nmax
         self.threads = threads
         self.df = df
@@ -142,6 +142,10 @@ class Apriori:
             )
             histograms.append(h)
             class_ids.append(row.class_id)
+        if len(histograms) == 0:
+            raise ValueError(
+                f"No l classes larger than {self.nmin}. Please lower nmin argument."
+            )
         results = pd.DataFrame(np.array(histograms), index=class_ids)
         results["class_id"] = results.index
         return results
@@ -190,6 +194,8 @@ class Apriori:
             cpuCount=self.threads,
             silent=self.silent,
         )
+        if results.empty:
+            results = pd.DataFrame(columns=[*range(81 + 1)])
         results["class_id"] = results.index
         return results
 
@@ -205,7 +211,7 @@ class Apriori:
         )[["class_id"] + [*range(81 + 1)]]
         return self.histograms
 
-    def estimate(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
+    def estimate(self, args: tuple[tuple[int], pd.DataFrame]) -> pd.DataFrame:
         """Fit prevalence and mu using the histogram which is the distribution of distances.
 
         Args:
@@ -233,7 +239,7 @@ class Apriori:
                 "error_poisson",
             ],
         )
-        result.class_id = [class_id]
+        result.class_id = [class_id[0]]
         result.rho_geo = [rho_geo]
         result.mu_geo = [mu_geo]
         result.error_geo = [error_geo]
@@ -297,6 +303,7 @@ class Apriori:
         self.classes["mean_distance"] = (
             parameters["mu_poisson"] / self.classes["cdr3_length"]
         )
+
         loc = self.classes["v_gene"] == "None"
         loc = loc & (~self.classes["prevalence"].isna())
         loc = loc & (~self.classes["mean_distance"].isna())
@@ -345,6 +352,7 @@ class Apriori:
             np.array([mu**bins * np.exp(-mu) for mu in mus]) / factorial(bins)
         ).cumsum(axis=1)
         ps = cdf0 / cdf1
+        t_sens = (cdf1 < self.sensitivity).sum(axis=1)
         t_prec = (
             np.array(
                 [
@@ -354,7 +362,6 @@ class Apriori:
             ).sum(axis=1)
             - 1
         )
-        t_sens = (cdf1 < self.sensitivity).sum(axis=1)
         t_prec = np.min([t_prec, t_sens], axis=0)
         return pd.DataFrame(
             {"t_prec": t_prec, "t_sens": t_sens},

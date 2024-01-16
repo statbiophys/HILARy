@@ -368,7 +368,16 @@ class HILARy:
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
         """
-
+        if self.remaining.empty:
+            self.df["family"] = self.df["precise_cluster"]
+            self.df = self.df.drop(
+                columns=[
+                    "cluster",
+                    "precise_cluster",
+                    "sensitive_cluster",
+                ],
+            )
+            return
         small_to_do, large_to_do = self.to_do()
         dfGrouped = self.df.groupby(self.group + ["sensitive_cluster"])
         log.debug(

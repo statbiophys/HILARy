@@ -35,6 +35,8 @@ def applyParallel(
         ret_list = list(
             tqdm(p.imap(func, dfGrouped), total=len(dfGrouped), disable=silent),
         )
+    if len(ret_list) == 0:
+        return pd.DataFrame()
     return pd.concat(ret_list)
 
 
