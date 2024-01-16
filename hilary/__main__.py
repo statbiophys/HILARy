@@ -164,7 +164,15 @@ def main(
             "Saving dataframe after preprocessing.",
             path=preprocessed_path.as_posix(),
         )
+        classes_path = debug_folder / Path(
+            f"classes_{data_path.name}",
+        ).with_suffix(".xlsx")
+        log.debug(
+            "Saving classes after preprocessing.",
+            path=classes_path.as_posix(),
+        )
         apriori.df.to_excel(preprocessed_path.as_posix())
+        apriori.classes.to_excel(classes_path.as_posix())
     log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
     apriori.get_histograms()
     log.info("⏳ COMPUTING PARAMETERS ⏳.")
@@ -185,6 +193,14 @@ def main(
             path=output_path.as_posix(),
         )
         hilary.df.to_excel(output_path)
+        parameters_path = debug_folder / Path(
+            f"parameters_{data_path.name}",
+        ).with_suffix(".xlsx")
+        log.debug(
+            "Saving all parameters inferred by Hilary.",
+            path=parameters_path.as_posix(),
+        )
+        hilary.classes.to_excel(parameters_path)
     mask = ~dataframe.index.isin(hilary.df.index)
     dataframe["family"] = hilary.df["family"]
     dataframe.loc[mask, "family"] = 0

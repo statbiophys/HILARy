@@ -144,7 +144,7 @@ class Apriori:
             class_ids.append(row.class_id)
         if len(histograms) == 0:
             raise ValueError(
-                f"No l classes larger than {self.nmin}. Please lower nmin argument."
+                f"No l classes larger than {self.nmin}. Please lower nmin argument.",
             )
         results = pd.DataFrame(np.array(histograms), index=class_ids)
         results["class_id"] = results.index
@@ -363,10 +363,9 @@ class Apriori:
             - 1
         )
         t_prec = np.min([t_prec, t_sens], axis=0)
-        return pd.DataFrame(
-            {"t_prec": t_prec, "t_sens": t_sens},
-            columns=["t_prec", "t_sens"],
-        )
+        ldf["precise_threshold"] = t_prec
+        ldf["sensitive_threshold"] = t_sens
+        return ldf[["precise_threshold", "sensitive_threshold"]]
 
     def get_thresholds(self, model: int = 326713) -> None:
         """Assigns thresholds using null distribution from model.
@@ -378,17 +377,9 @@ class Apriori:
         self.cdfs = pd.read_csv(
             dirname.parents[0] / Path(f"data/cdfs_{model}.csv"),
         )
-        thresholds_dataframe = applyParallel(
+        self.classes[["precise_threshold", "sensitive_threshold"]] = applyParallel(
             self.classes.groupby(["cdr3_length"]),
             self.assign_precise_sensitive_thresholds,
             cpuCount=self.threads,
             silent=self.silent,
         )
-        thresholds_dataframe["class_id"] = range(
-            1,
-            len(thresholds_dataframe) + 1,
-        )
-        thresholds_dataframe = thresholds_dataframe.set_index("class_id")
-        self.classes[
-            ["precise_threshold", "sensitive_threshold"]
-        ] = thresholds_dataframe[["t_prec", "t_sens"]]
