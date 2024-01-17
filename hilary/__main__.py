@@ -48,10 +48,10 @@ def main(
         help="Choose desired sensitivity.",
     ),
     nmin: int = typer.Option(
-        1,
+        1000,
         "--nmin",
-        help="Infer prevalence and mu on classes of size larger than nmin. \
-            Mean prevalence is assigned to lower than nmin classes.",
+        help="""Infer prevalence and mu on classes of size larger than nmin. \
+            Mean prevalence is assigned to lower than nmin classes.""",
     ),
     model: int = typer.Option(
         326713,
@@ -88,9 +88,9 @@ def main(
         nmin (int, optional): Infer prevalence and mu on classes of size > nmin, defaults to 100000.
         model (int, optional): Model name to infer Null distribution, defaults to 326713.
         silent (bool,optional): Do not show progress bars if used.
-        result_folder (Path): Where to save the result files. By default it will be saved in a \
+        result_folder (Path): Where to save the result files. By default it will be saved in a
             'result/' folder in input data's parent directory.
-        config (Path): Configuration file for column names. File should be a json with keys \
+        config (Path): Configuration file for column names. File should be a json with keys
             as your data's column names and values as hilary's required column names.
     """
     if result_folder is None:

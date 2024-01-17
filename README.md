@@ -1,6 +1,6 @@
 # 0. Installation
 
-Update when package is released on Pypi.
+`pip install hilary`
 
 # 1. Usage
 
@@ -17,8 +17,30 @@ Inputs needs to be a tsv or excel file in airr format, meaning with the followin
 
 ### 1.2 From the command line
 
-TBD
+`infer --help`
 
+```
+Arguments:
+  DATA_PATH  Path of the excel file to infer lineages.  [required]
+
+Options:
+  -v, --verbose            Set logging verbosity level.  [default: 0]
+  -t, --threads INTEGER    Choose number of cpus on which to run code.
+                           [default: all available]
+  -p, --precision FLOAT    Choose desired precision.  [default: 0.99]
+  -s, --sensitivity FLOAT  Choose desired sensitivity.  [default: 0.9]
+  --nmin INTEGER           Infer prevalence and mu on classes of size larger than nmin.
+                            Mean prevalence is assigned to lower than nmin classes.  [default: 1000]
+  -m, --model INTEGER      Model name to infer Null distribution.  [default: 326713]
+  --silent                 Do not show progress bars if used.
+  --result-folder PATH     Where to save the result files. By default it will be saved in a
+                            'result/' folder in input data's parent directory.
+  --config PATH            Configuration file for column names. File should be a json with keys as
+                            your data's column names and values as hilary's required column names.
+  --help                   Show this message and exit.
+```
+
+**example :** `infer /home/gabrielathenes/Documents/study/test.xlsx --nmin 10000 -vv --result-folder ../hilary_test`
 ### 1.3 From Python
 
 See `tutorial.ipynb`
