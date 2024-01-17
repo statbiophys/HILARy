@@ -63,10 +63,7 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.cdfs = pd.read_csv(
-            Path(
-                os.path.dirname(__file__),
-            ).parents[0]
-            / Path(f"data/cdfs_{model}.csv"),
+            Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv")
         )
         self.preprocess()
         self.classes = self.create_classes()
@@ -367,16 +364,12 @@ class Apriori:
         ldf["sensitive_threshold"] = t_sens
         return ldf[["precise_threshold", "sensitive_threshold"]]
 
-    def get_thresholds(self, model: int = 326713) -> None:
+    def get_thresholds(self) -> None:
         """Assigns thresholds using null distribution from model.
 
         Args:
             model int: _description_. Defaults to 326713.
         """
-        dirname = Path(os.path.dirname(__file__))
-        self.cdfs = pd.read_csv(
-            dirname.parents[0] / Path(f"data/cdfs_{model}.csv"),
-        )
         self.classes[["precise_threshold", "sensitive_threshold"]] = applyParallel(
             self.classes.groupby(["cdr3_length"]),
             self.assign_precise_sensitive_thresholds,

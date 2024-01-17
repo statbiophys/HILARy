@@ -8,7 +8,6 @@ from hilary import __version__
 setup(
     install_requires=[
         "setuptools>=56,<57",
-        "logging>=0.4.9,<1",
         "numpy>=1.20.0,<2",
         "openpyxl>=3.1,<4",
         "pandas>=2.1,<3",
@@ -20,14 +19,20 @@ setup(
         "atriegc>=0.0.3,<1.0.0",
     ],
     name="hilary",
-    version=__version__,
+    version="1.0.13",
     url="https://github.com/statbiophys/HILARy/",
     author="Natanael Spisak, Gabriel Athènes",
     author_email="natanael.spisak@gmail.com, gabriel.athenes@polytechnique.edu",
     packages=find_packages(),
+    include_package_data=True,
     entry_points={
         "console_scripts": [
             "infer=hilary.__main__:app",
         ],
     },
+    classifiers=[
+        "Intended Audience :: Developers",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+    ],
 )

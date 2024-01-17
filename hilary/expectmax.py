@@ -25,7 +25,7 @@ class EM:
         """Read estimated null distribution"""
         dirname = Path(os.path.dirname(__file__))
         cdfs = pd.read_csv(
-            dirname.parents[0] / Path(f"data/cdfs_{self.model}.csv"),
+            dirname / Path(f"cdfs_{self.model}.csv"),
         )
         cdf = cdfs.loc[cdfs["l"] == self.l].values[0, 1 : self.l + 1]
         return np.diff(cdf, prepend=[0], append=[1])
