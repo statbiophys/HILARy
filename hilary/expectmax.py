@@ -38,14 +38,14 @@ class EM:
         elif self.positives == "poisson":
             P1 = rho * mu**self.b * np.exp(-mu) / factorial(self.b)
         P0 = (1 - rho) * self.const_p0[self.b]
-        return np.array([P1, P0]) / (P1 + P0)
+        return np.array([P1, P0]) / (P1 + P0 + 1e-5)
 
     def dicreteMaximization(self, theta):
         """Maximize current likelihood"""
         P1, P0 = self.discreteExpectation(theta)
         P1Sum, P0Sum = (self.h * P1).sum(), (self.h * P0).sum()
-        rho = P1Sum / (P1Sum + P0Sum)
-        mu = np.dot(self.h * P1, self.b) / P1Sum
+        rho = min(P1Sum / (P1Sum + P0Sum), 1.0)
+        mu = np.dot(self.h * P1, self.b) / (P1Sum + 1e-5)
         return rho, mu
 
     def discreteEM(self):
@@ -54,8 +54,11 @@ class EM:
         P0 estimated with Ppost"""
         mu = 0.02 * self.l
         rho = self.h[0] / sum(self.h) * (1 + mu)
-        theta = (rho, mu)
+        theta = (max(min(1.0, rho), 0.1), mu)
         for _ in range(self.howmany):
+            # if np.isnan(theta[0]) or np.isnan(theta[1]):
+            #    print("nan appears at ", i - 1)
+            #    return theta
             theta = self.dicreteMaximization(theta)
         return theta
 
@@ -82,11 +85,11 @@ class EM:
         y1m, y2m = y1[mask], y2[mask]
         logy1, logy2 = np.log(y1m), np.log(y2m)
 
-        mse = ((y1m - y2m) ** 2).sum() / mask.sum()
+        mse = ((y1m - y2m) ** 2).sum() / (mask.sum() + 1e-5)
         rmse = np.sqrt(mse)
-        msle = ((logy1 - logy2) ** 2).sum() / mask.sum()
+        msle = ((logy1 - logy2) ** 2).sum() / (mask.sum() + 1e-5)
         rmsle = np.sqrt(msle)
-        mae = np.abs(y1m - y2m).sum() / mask.sum()
+        mae = np.abs(y1m - y2m).sum() / (mask.sum() + 1e-5)
         dkl = (y2m * (logy2 - logy1)).sum() / np.log(2)
         if error == "rmse":
             return rmse
@@ -96,7 +99,7 @@ class EM:
             return mae
         elif error == "dkl":
             return dkl
-        elif error == "rrmse":
-            return rmse / theta[0]
+        elif error == "rrmse" and theta[0] > 0:
+            return rmse / (theta[0] + 1e-5)
         else:
             return False

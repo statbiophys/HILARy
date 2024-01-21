@@ -26,7 +26,6 @@ class Apriori:
         self,
         df: pd.DataFrame,
         lengths=np.arange(15, 81 + 3, 3).astype(int),
-        nmin: int = int(1e5),
         nmax: int = int(1e5),
         precision: float = 0.99,
         sensitivity: float = 0.9,
@@ -40,8 +39,6 @@ class Apriori:
             df (pd.DataFrame): Dataframe of sequences
             lengths (_type_, optional): CDR3 lengths used to filter non productive sequences. \
                 Defaults to np.arange(15, 81 + 3, 3).
-            nmin (int, optional): Infer prevalence and mu on classes of size > nmin, \
-                defaults to 100000.
             nmax (int, optional): For parameter inference, sample and use nmax sequences for \
                 classes larger than nmax. Defaults to 100000.
             precision (float, optional): Desired precision, defaults to 0.99.
@@ -51,7 +48,6 @@ class Apriori:
             silent (bool) : If true do not to show progress bars.
         """
         self.lengths = lengths
-        self.nmin = max(1000, nmin)
         self.nmax = nmax
         self.threads = threads
         self.df = df
@@ -74,7 +70,10 @@ class Apriori:
         Returns:
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        self.df = preprocess(self.df, silent=self.silent)
+        self.df = preprocess(
+            self.df,
+            silent=self.silent,
+        )
         return self.df
 
     def create_classes(self) -> pd.DataFrame:
@@ -124,7 +123,7 @@ class Apriori:
         histograms = []
         class_ids = []
         rows = self.classes.query(
-            "v_gene == 'None' and pair_count >= @self.nmin",
+            "v_gene == 'None' and pair_count >0",
         ).iterrows()
         for _, row in rows:
             frac = min(np.sqrt(self.nmax / row.pair_count), 1)
@@ -139,10 +138,6 @@ class Apriori:
             )
             histograms.append(h)
             class_ids.append(row.class_id)
-        if len(histograms) == 0:
-            raise ValueError(
-                f"No l classes larger than {self.nmin}. Please lower nmin argument.",
-            )
         results = pd.DataFrame(np.array(histograms), index=class_ids)
         results["class_id"] = results.index
         return results
@@ -172,7 +167,7 @@ class Apriori:
 
         Returns:
             pd.DataFrame: Histogram of distances for large VJl classes."""
-        query = "v_gene != 'None' and pair_count >= @self.nmin"
+        query = "v_gene != 'None' and pair_count >0"
         groups = self.df.groupby(["v_gene", "j_gene", "cdr3_length"])
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",

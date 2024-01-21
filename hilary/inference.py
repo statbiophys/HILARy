@@ -369,7 +369,7 @@ class HILARy:
         depending on whether the sensitive cluster is large or not.
         """
         if self.remaining.empty:
-            self.df["family"] = self.df["precise_cluster"]
+            self.df["clone_id"] = self.df["precise_cluster"]
             self.df = self.df.drop(
                 columns=[
                     "cluster",
@@ -383,11 +383,13 @@ class HILARy:
         log.debug(
             "Grouping precise clusters together to reach desired sensitivity.",
         )
+        log.debug("Inferring family clusters for small groups.")
         self.df["family_cluster"] = applyParallel(
             [(g, dfGrouped.get_group(g)) for g in small_to_do],
             self.class2pairs,
             silent=self.silent,
         )
+        log.debug("Inferring family clusters for large groups.")
         for g in large_to_do:
             _, _, l, _ = g  # (vgene, jgene, cdr3length, sensitive cluster)
             dm = DistanceMatrix(
@@ -411,7 +413,7 @@ class HILARy:
             self.df["family_cluster"] = self.df.index.map(dct)
 
         self.df.fillna(value={"family_cluster": 0}, inplace=True)
-        self.df["family"] = (
+        self.df["clone_id"] = (
             self.df.groupby(
                 self.group + ["sensitive_cluster", "family_cluster"],
             ).ngroup()
@@ -422,7 +424,5 @@ class HILARy:
                 "family_cluster",
                 "cluster",
                 "precise_cluster",
-                "sensitive_cluster",
-                "to_resolve",
             ],
         )

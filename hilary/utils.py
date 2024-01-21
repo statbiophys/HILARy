@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from multiprocessing import Pool, cpu_count
-from typing import Callable
+from typing import Callable, Optional
+from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
@@ -58,17 +60,14 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
 
 def preprocess(
     dataframe: pd.DataFrame,
-    max_mutation_count: int = 60,
     lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
     silent: bool = False,
 ) -> pd.DataFrame:
     """Processes input dataframe.
-    Drop nulls, filters for cdr3 length & mutation counts.
+    Drop nulls, filters for cdr3 length.
 
     Args:
         dataframe (pd.DataFrame): Input dataframe of sequences.
-        max_mutation_count (int, optional): Remove sequences with higher mutation count. \
-            Defaults to 60.
         lengths (np.ndarray, optional): Remove sequences with CDR3 length not in lengths. \
             Defaults to np.arange(15, 81 + 3, 3).astype(int).
         silent (bool, optional): Do not show progress bar if true. Defaults to False.
@@ -123,12 +122,9 @@ def preprocess(
         "Filtering sequences",
         criteria_one="CDR3 length not multiple of three.",
         criteria_two="CDR3 length not in [15,81].",
-        criteria_three="More than 60 sequence mutations from germline.",
-        criteria_four="With a null column value.",
+        criteria_three="With a null column value.",
     )
-    return df.query(
-        "cdr3_length in @lengths and mutation_count <= @max_mutation_count",
-    )[usecols].astype({"mutation_count": int, "cdr3_length": int})
+    return df.query("cdr3_length in @lengths")[usecols].astype({"cdr3_length": int})
 
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
@@ -162,3 +158,60 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     classes["class_id"] = range(1, len(classes) + 1)
     classes.reset_index(drop=True, inplace=True)
     return classes
+
+
+def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
+    """Save dataframe depending on suffix.
+
+    Args:
+        dataframe (pd.DataFrame): Dataframe to save.
+        save_path (Path): Where to save the dataframe.
+
+    Raises:
+        ValueError: save_path suffix not supported.
+    """
+    suffix = save_path.suffix
+    if suffix == ".xlsx":
+        dataframe.to_excel(save_path)
+    elif suffix == ".tsv":
+        dataframe.to_csv(save_path, sep="\t")
+    elif suffix == ".csv":
+        dataframe.to_csv(save_path)
+    else:
+        raise ValueError(f"Format {suffix} not supported.")
+
+
+def read_input(input_path: Path, config: Optional[Path] = None) -> pd.DataFrame:
+    """Read input file.
+
+    Args:
+        input_path (Path):Path of input file.
+
+    Raises:
+        ValueError: Format of input file is not supported.
+
+    Returns:
+        pd.DataFrame: Pandas dataframe.
+    """
+    suffix = input_path.suffix
+    if suffix == ".xlsx":
+        dataframe = pd.read_excel(input_path)
+    elif suffix == ".tsv":
+        dataframe = pd.read_csv(
+            input_path,
+            sep="\t",
+        )
+    elif suffix == ".csv":
+        dataframe = pd.read_csv(
+            input_path,
+        )
+    else:
+        raise ValueError(
+            f"Format {suffix} not supported. Extensions supported are tsv, xlsx.",
+        )
+    if config:
+        with open(config, encoding="utf-8") as user_file:
+            column_dict = json.load(user_file)
+            for key in column_dict:
+                dataframe[column_dict[key]] = dataframe[key]
+    return dataframe
