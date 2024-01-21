@@ -138,3 +138,5 @@ my_pip_package.egg-info/
 ./.pre-commit-config.yaml
 ./.gitignore
 ./dist/
+
+*.tsv

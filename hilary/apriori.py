@@ -59,7 +59,7 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.cdfs = pd.read_csv(
-            Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv")
+            Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
         )
         self.preprocess()
         self.classes = self.create_classes()
@@ -97,50 +97,6 @@ class Apriori:
         x = pd.DataFrame()
         x["x"] = xs
         return x
-
-    def l2x(self, df: pd.DataFrame) -> np.ndarray:
-        """Compute CDR3 hamming distances within l class
-
-        Args:
-            df pd.DataFrame : Dataframe filtered on cdr3 length
-
-        Returns:
-            np.array: Distance distribution for l class.
-        """
-        x = applyParallel(
-            df.groupby(["v_gene", "j_gene", "cdr3_length"]),
-            self.vjl2x,
-            cpuCount=self.threads,
-            silent=self.silent,
-        )
-        return np.histogram(x.x, bins=range(self.lengths[-1] + 2), density=False)[0]
-
-    def compute_alll(self) -> pd.DataFrame:
-        """Compute histograms for all large l classes.
-
-        Returns:
-            pd.DataFrame: Histogram of distances for large l classes."""
-        histograms = []
-        class_ids = []
-        rows = self.classes.query(
-            "v_gene == 'None' and pair_count >0",
-        ).iterrows()
-        for _, row in rows:
-            frac = min(np.sqrt(self.nmax / row.pair_count), 1)
-            log.debug(
-                "Computing CDR3 hamming distances within l class.",
-                CDR3_length=row.cdr3_length,
-            )
-            h = self.l2x(
-                self.df.query(
-                    "cdr3_length == @row.cdr3_length",
-                ).sample(frac=frac),
-            )
-            histograms.append(h)
-            class_ids.append(row.class_id)
-        results = pd.DataFrame(np.array(histograms), index=class_ids)
-        results["class_id"] = results.index
-        return results
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class
@@ -196,9 +152,8 @@ class Apriori:
 
         Returns:
             pd.DataFrame: Histogram of distances for all large classes."""
-        hs_l = self.compute_alll()
         hs_vjl = self.compute_allvjl()
-        self.histograms = pd.concat([hs_l, hs_vjl], ignore_index=True).sort_values(
+        self.histograms = hs_vjl.sort_values(
             "class_id",
         )[["class_id"] + [*range(81 + 1)]]
         return self.histograms
@@ -240,36 +195,6 @@ class Apriori:
         result.error_poisson = [error_poisson]
         return result
 
-    def assign_prevalence(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
-        """Updates prevalence of classes not large enough using the mean prevalence.
-
-        Args:
-            args tuple[int,pd.DataFrame]: length, dataframe grouped by length l.
-
-        Returns:
-            pd.DataFrame: Dataframe containing prevalence for all classes.
-        """
-        l, ldf = args
-        p = ldf.loc[ldf["v_gene"] == "None"].prevalence.values[0]
-        if np.isnan(p):
-            p = self.mean_prevalence
-        return ldf[["prevalence"]].fillna(p)
-
-    def assign_mean_distance(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
-        """Updates mean_distance of classes not large enough using the mean mean_distance.
-
-        Args:
-            args tuple[int,pd.DataFrame]: length, dataframe grouped by length l.
-
-        Returns:
-            pd.DataFrame: Dataframe containing mean_distance for all classes.
-        """
-        l, ldf = args
-        m = ldf.loc[ldf["v_gene"] == "None"].mean_distance.values[0]
-        if np.isnan(m):
-            m = self.mean_mean_distance
-        return ldf[["mean_distance"]].fillna(m)
-
     def get_parameters(self) -> None:
         """Computes prevalence and mean distance for all classes."""
         if self.histograms is None:
@@ -295,30 +220,9 @@ class Apriori:
         self.classes["mean_distance"] = (
             parameters["mu_poisson"] / self.classes["cdr3_length"]
         )
-
-        loc = self.classes["v_gene"] == "None"
-        loc = loc & (~self.classes["prevalence"].isna())
-        loc = loc & (~self.classes["mean_distance"].isna())
-        ns = self.classes.loc[loc]["pair_count"]
-        rhos = self.classes.loc[loc]["prevalence"]
-        mus = self.classes.loc[loc]["mean_distance"]
-        ws = ns * (ns - 1)
-        ws = ws / sum(ws)
-        self.mean_prevalence = sum(ws * rhos)
-        self.mean_mean_distance = sum(ws * mus)
-        log.debug("Assigning effective prevalence.")
-        self.classes["effective_prevalence"] = applyParallel(
-            self.classes.groupby(["cdr3_length"]),
-            self.assign_prevalence,
-            cpuCount=self.threads,
-            silent=self.silent,
-        )
-        log.debug("Assigning effective mean distance")
-        self.classes["effective_mean_distance"] = applyParallel(
-            self.classes.groupby(["cdr3_length"]),
-            self.assign_mean_distance,
-            cpuCount=self.threads,
-            silent=self.silent,
+        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(1)
+        self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
+            0,
         )
 
     def assign_precise_sensitive_thresholds(

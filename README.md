@@ -41,6 +41,7 @@ Options:
 ```
 
 **example :** `infer /home/gabrielathenes/Documents/study/test.xlsx --nmin 10000 -vv --result-folder ../hilary_test`
+
 ### 1.3 From Python
 
 See `tutorial.ipynb`
