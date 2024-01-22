@@ -60,7 +60,6 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
 
 def preprocess(
     dataframe: pd.DataFrame,
-    lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
     silent: bool = False,
 ) -> pd.DataFrame:
     """Processes input dataframe.
@@ -124,7 +123,7 @@ def preprocess(
         criteria_two="CDR3 length not in [15,81].",
         criteria_three="With a null column value.",
     )
-    return df.query("cdr3_length in @lengths")[usecols].astype({"cdr3_length": int})
+    return df.query("cdr3_length%3==0")[usecols].astype({"cdr3_length": int})
 
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:

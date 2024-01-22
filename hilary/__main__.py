@@ -42,7 +42,7 @@ def main(
         help="Choose desired precision.",
     ),
     sensitivity: float = typer.Option(
-        0.9,
+        0.95,
         "--sensitivity",
         "-s",
         help="Choose desired sensitivity.",
@@ -70,6 +70,9 @@ def main(
         help="""Configuration file for column names. File should be a json with keys as your data's
             column names and values as hilary's required column names.""",
     ),
+    override: bool = typer.Option(
+        False, "--override", help="Override existing results."
+    ),
 ) -> None:
     """Infer lineages from data_path excel file."""
     if result_folder is None:
@@ -77,6 +80,12 @@ def main(
     result_folder.mkdir(parents=True, exist_ok=True)
     debug_folder = result_folder / Path("debug/")
     debug_folder.mkdir(parents=True, exist_ok=True)
+
+    output_path = result_folder / Path(f"inferred_{data_path.name}")
+    if output_path.exists() and not override:
+        raise ValueError(
+            f"{output_path.as_posix()} already exists, use override parameter to replace the file."
+        )
 
     if verbose >= 2:  # noqa: PLR2004
         logging_level = logging.DEBUG
@@ -125,13 +134,14 @@ def main(
             "Saving dataframe after preprocessing.",
             path=preprocessed_path.as_posix(),
         )
+        save_dataframe(dataframe=apriori.df, save_path=preprocessed_path)
+
         classes_path = debug_folder / Path(f"classes_{data_path.name}")
         log.debug(
             "Saving classes after preprocessing.",
             path=classes_path.as_posix(),
         )
-        save_dataframe(dataframe=dataframe, save_path=preprocessed_path)
-        save_dataframe(dataframe=dataframe, save_path=classes_path)
+        save_dataframe(dataframe=apriori.classes, save_path=classes_path)
 
     log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
     apriori.get_histograms()
@@ -188,7 +198,7 @@ def main(
     output_path = result_folder / Path(f"inferred_{data_path.name}")
 
     log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
-    save_dataframe(dataframe, save_path=output_path)
+    save_dataframe(dataframe=dataframe, save_path=output_path)
 
 
 if __name__ == "__main__":
