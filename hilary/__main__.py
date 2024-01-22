@@ -71,7 +71,9 @@ def main(
             column names and values as hilary's required column names.""",
     ),
     override: bool = typer.Option(
-        False, "--override", help="Override existing results."
+        False,
+        "--override",
+        help="Override existing results.",
     ),
 ) -> None:
     """Infer lineages from data_path excel file."""
@@ -84,7 +86,7 @@ def main(
     output_path = result_folder / Path(f"inferred_{data_path.name}")
     if output_path.exists() and not override:
         raise ValueError(
-            f"{output_path.as_posix()} already exists, use override parameter to replace the file."
+            f"{output_path.as_posix()} already exists, use override parameter to replace the file.",
         )
 
     if verbose >= 2:  # noqa: PLR2004
@@ -185,11 +187,13 @@ def main(
                 2,
             ).sum()
             / binom(
-                hilary.df.groupby(["v_gene", "j_gene", "cdr3_length"]).size(), 2
+                hilary.df.groupby(["v_gene", "j_gene", "cdr3_length"]).size(),
+                2,
             ).sum()
         )
         log.info(
-            "Fraction of pairs that go through mutation method.", fraction=mut_met_frac
+            "Fraction of pairs that go through mutation method.",
+            fraction=mut_met_frac,
         )
 
     mask = ~dataframe.index.isin(hilary.df.index)

@@ -1,10 +1,10 @@
 "Code to process data and fit model parameters."
 from __future__ import annotations
 
-from multiprocessing import Pool, cpu_count
-from typing import Callable, Optional
-from pathlib import Path
 import json
+from multiprocessing import Pool, cpu_count
+from pathlib import Path
+from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -60,6 +60,7 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
 
 def preprocess(
     dataframe: pd.DataFrame,
+    lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
     silent: bool = False,
 ) -> pd.DataFrame:
     """Processes input dataframe.
@@ -123,7 +124,7 @@ def preprocess(
         criteria_two="CDR3 length not in [15,81].",
         criteria_three="With a null column value.",
     )
-    return df.query("cdr3_length%3==0")[usecols].astype({"cdr3_length": int})
+    return df.query("cdr3_length in @lengths")[usecols].astype({"cdr3_length": int})
 
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
@@ -180,7 +181,7 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
         raise ValueError(f"Format {suffix} not supported.")
 
 
-def read_input(input_path: Path, config: Optional[Path] = None) -> pd.DataFrame:
+def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
     """Read input file.
 
     Args:
