@@ -81,23 +81,6 @@ class Apriori:
         self.classes = create_classes(self.df)
         return self.classes
 
-    def vjl2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
-        """Compute CDR3 hamming distances within VJl class
-
-        Args:
-            args _, pd.DataFrame : _ , Dataframe filtered on v_gene, j_gene and length
-
-        Returns:
-            pd.DataFrame: Distance distribution for vjl class.
-        """
-        _, df = args
-        xs = []
-        for s1, s2 in combinations(df["cdr3"].values, 2):
-            xs.append(hamming(s1, s2))
-        x = pd.DataFrame()
-        x["x"] = xs
-        return x
-
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class
 
@@ -118,12 +101,15 @@ class Apriori:
             columns=[i],
         ).transpose()
 
-    def compute_allvjl(self) -> pd.DataFrame:
+    def compute_allvjl(
+        self,
+        lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
+    ) -> pd.DataFrame:
         """Compute histograms for all large VJl classes.
 
         Returns:
             pd.DataFrame: Histogram of distances for large VJl classes."""
-        query = "v_gene != 'None' and pair_count >0"
+        query = "v_gene != 'None' and pair_count >0 and cdr3_length in @lengths"
         groups = self.df.groupby(["v_gene", "j_gene", "cdr3_length"])
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",
@@ -220,9 +206,9 @@ class Apriori:
         self.classes["mean_distance"] = (
             parameters["mu_poisson"] / self.classes["cdr3_length"]
         )
-        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(1)
+        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2)
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
-            0,
+            0.2,
         )
 
     def assign_precise_sensitive_thresholds(
@@ -240,6 +226,12 @@ class Apriori:
 
         tuple_l, ldf = args
         l = tuple_l[0]
+        if l > 81 or l < 15 or l % 3 != 0:
+            ldf[["precise_threshold", "sensitive_threshold"]] = (
+                np.ones((len(ldf), 2), dtype=int) * l // 5
+            )
+            return ldf[["precise_threshold", "sensitive_threshold"]]
+
         rhos = ldf["effective_prevalence"]
         mus = ldf["effective_mean_distance"] * l
         bins = np.arange(l + 1)

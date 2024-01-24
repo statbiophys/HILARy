@@ -60,16 +60,12 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
 
 def preprocess(
     dataframe: pd.DataFrame,
-    lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
     silent: bool = False,
 ) -> pd.DataFrame:
     """Processes input dataframe.
-    Drop nulls, filters for cdr3 length.
 
     Args:
         dataframe (pd.DataFrame): Input dataframe of sequences.
-        lengths (np.ndarray, optional): Remove sequences with CDR3 length not in lengths. \
-            Defaults to np.arange(15, 81 + 3, 3).astype(int).
         silent (bool, optional): Do not show progress bar if true. Defaults to False.
 
     Returns:
@@ -118,13 +114,7 @@ def preprocess(
         count_mutations,
         silent=silent,
     )
-    log.debug(
-        "Filtering sequences",
-        criteria_one="CDR3 length not multiple of three.",
-        criteria_two="CDR3 length not in [15,81].",
-        criteria_three="With a null column value.",
-    )
-    return df.query("cdr3_length in @lengths")[usecols].astype({"cdr3_length": int})
+    return df[usecols].astype({"cdr3_length": int})
 
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:

@@ -61,19 +61,27 @@ def main(
     result_folder: Path = typer.Option(
         None,
         "--result-folder",
-        help="""Where to save the result files. By default it will be saved in a 'result/'
-            folder in input data's parent directory.""",
+        help="Where to save the result files. By default it will be saved in a 'result/' folder.",
     ),
     config: Path = typer.Option(
         None,
         "--config",
-        help="""Configuration file for column names. File should be a json with keys as your data's
-            column names and values as hilary's required column names.""",
+        help="""Configuration file for column names. File should be a json with keys as your \
+            data's column names and values as hilary's required column names.""",
     ),
     override: bool = typer.Option(
         False,
         "--override",
         help="Override existing results.",
+    ),
+    use_json: bool = typer.Option(
+        False, "--json/--text", help="Print logs as JSON or text."
+    ),
+    method: str = typer.Option(
+        "full",
+        "--method",
+        help="""Whether to use cdr3 base, xy or full method. Possible values are 'full', \
+        'cdr3only', and 'xyonly'.""",
     ),
 ) -> None:
     """Infer lineages from data_path excel file."""
@@ -95,7 +103,10 @@ def main(
         logging_level = logging.INFO
     else:
         logging_level = logging.WARNING
-    renderer = structlog.dev.ConsoleRenderer(sort_keys=False)
+    if use_json:
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer(sort_keys=False)
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(logging_level),
         processors=[
@@ -106,6 +117,11 @@ def main(
             renderer,
         ],
     )
+    if method not in ["cdr3only", "xyonly", "full"]:
+        raise ValueError(
+            "Method argument provided unknow. Poissble values are 'cdr3only,xyonly,full'"
+        )
+
     log = structlog.get_logger()
     log.info(
         "📖 READING DATA ",
@@ -158,11 +174,19 @@ def main(
     log.info("⏳ COMPUTING THRESHOLDS ⏳.")
     apriori.get_thresholds()
 
+    if logging_level == logging.DEBUG:
+        parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
+        log.debug(
+            "Saving all parameters inferred by Hilary.",
+            path=parameters_path.as_posix(),
+        )
+        save_dataframe(apriori.classes, parameters_path)
+
     hilary = HILARy(apriori)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
     hilary.compute_prec_sens_clusters()
     log.info("⏳ INFERRING FAMILIES ⏳.")
-    hilary.infer()
+    hilary.infer(method=method)
 
     if logging_level == logging.DEBUG:
         output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
@@ -171,34 +195,43 @@ def main(
             path=output_path.as_posix(),
         )
         save_dataframe(hilary.df, save_path=output_path)
-        parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
+        grouped_by_sensitive = (
+            hilary.df.groupby(
+                hilary.group + ["sensitive_cluster", "clone_id"], group_keys=True
+            )[["to_resolve"]]
+            .apply(lambda x: x.sum())
+            .rename(columns={"to_resolve": "count"})
+        )
+        grouped_by_sensitive["method"] = grouped_by_sensitive["count"].apply(
+            lambda x: "xy" if x > 0 else "cdr3"
+        )
+        method_summary_path = debug_folder / Path(f"method_summary_{data_path.name}")
         log.debug(
-            "Saving all parameters inferred by Hilary.",
-            path=parameters_path.as_posix(),
+            "Saving method distribution summary.",
+            path=method_summary_path.as_posix(),
         )
-        save_dataframe(hilary.classes, parameters_path)
+        save_dataframe(grouped_by_sensitive["method"], save_path=method_summary_path)
 
-    if "to_resolve" in hilary.df.columns:
-        mut_met_frac = (
-            binom(
-                hilary.df.query("to_resolve == True")
-                .groupby(hilary.group + ["sensitive_cluster"])
-                .size(),
-                2,
-            ).sum()
-            / binom(
-                hilary.df.groupby(["v_gene", "j_gene", "cdr3_length"]).size(),
-                2,
-            ).sum()
-        )
-        log.info(
-            "Fraction of pairs that go through mutation method.",
-            fraction=mut_met_frac,
-        )
+    pair_frac = (
+        binom(
+            hilary.df.query("to_resolve == True")
+            .groupby(hilary.group + ["sensitive_cluster"])
+            .size(),
+            2,
+        ).sum()
+        / binom(
+            hilary.df.groupby(hilary.group + ["sensitive_cluster"]).size(),
+            2,
+        ).sum()
+    )
+    log.info(
+        "Fraction of pairs that go through xy method.",
+        fraction=pair_frac,
+    )
 
-    mask = ~dataframe.index.isin(hilary.df.index)
     dataframe["clone_id"] = hilary.df["clone_id"]
-    dataframe.loc[mask, "clone_id"] = 0
+    dataframe["precise_cluster"] = hilary.df["precise_cluster"]
+    dataframe["sensitive_cluster"] = hilary.df["sensitive_cluster"]
     output_path = result_folder / Path(f"inferred_{data_path.name}")
 
     log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())

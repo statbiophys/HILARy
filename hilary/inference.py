@@ -254,21 +254,21 @@ class HILARy:
         self,
         args: tuple[tuple[str, str, int, int], pd.DataFrame],
     ) -> pd.Series:
-        """Group precise clusters not reaching desired sensitivity together.
+        """Group precise clusters together.
 
         Args:
             args (Tuple[Tuple[str,str,int,int],pd.DataFrame]): (Vgene,Jgene,cdr3length),dataframe
             representing sensitive cluster.
 
         Returns:
-            pd.Series: Precise clusters which now reach required sensitivity.
+            pd.Series: New clusters made of grouped precise clusters.
         """
         (
             (
-                _,
-                _,
+                v_gene,
+                j_gene,
                 l,
-                _,
+                sensitive_cluster,
             ),
             df,
         ) = args  # (vgene, jgene, cdr3length, sensitive cluster), df
@@ -304,7 +304,6 @@ class HILARy:
             x = (n - exp_n) / std_n
             y = (n0 - exp_n0) / std_n0
             distance = x - y + 100.0
-
             distanceMatrix[i1, i2] = distance
             distanceMatrix[i2, i1] = distance
 
@@ -336,7 +335,9 @@ class HILARy:
         df["to_resolve"] = True
         return df["to_resolve"]
 
-    def to_do(self, size_threshold: float = 1e3) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def to_do(
+        self, size_threshold: float = 1e3, method: str = "full"
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
         Args:
@@ -346,13 +347,20 @@ class HILARy:
         Returns:
             Tuple[pd.DataFrame,pd.DataFrame]: Returns indices of small and big sensitive clusters.
         """
-        self.df["to_resolve"] = False
-        self.df["to_resolve"] = applyParallel(
-            [self.df.groupby(self.group).get_group(g) for g in self.remaining],
-            self.mark_class,
-            silent=True,
-        )
-        self.df.fillna(value={"to_resolve": False}, inplace=True)
+        if method == "full":
+            self.df["to_resolve"] = False
+            if not self.remaining.empty:
+                self.df["to_resolve"] = applyParallel(
+                    [self.df.groupby(self.group).get_group(g) for g in self.remaining],
+                    self.mark_class,
+                    silent=True,
+                )
+                self.df.fillna(value={"to_resolve": False}, inplace=True)
+        elif method == "xyonly":
+            self.df["to_resolve"] = True
+        else:
+            self.df["to_resolve"] = False
+
         dfGrouped = self.df.query("to_resolve == True").groupby(
             self.group + ["sensitive_cluster"],
         )
@@ -362,23 +370,21 @@ class HILARy:
         small_to_do = sizes[~mask].index
         return small_to_do, large_to_do
 
-    def infer(self) -> None:
+    def infer(self, method: str = "full") -> None:
         """Infer family clusters.
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
         """
-        if self.remaining.empty:
+        small_to_do, large_to_do = self.to_do(method=method)
+        if sum(self.df["to_resolve"]) == 0:
             self.df["clone_id"] = self.df["precise_cluster"]
             self.df = self.df.drop(
                 columns=[
                     "cluster",
-                    "precise_cluster",
-                    "sensitive_cluster",
                 ],
             )
             return
-        small_to_do, large_to_do = self.to_do()
         dfGrouped = self.df.groupby(self.group + ["sensitive_cluster"])
         log.debug(
             "Grouping precise clusters together to reach desired sensitivity.",
@@ -422,7 +428,5 @@ class HILARy:
         self.df = self.df.drop(
             columns=[
                 "family_cluster",
-                "cluster",
-                "precise_cluster",
             ],
         )
