@@ -10,7 +10,7 @@ from scipy.special import binom
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
-from hilary.utils import read_input, save_dataframe
+from hilary.utils import pairwise_evaluation, read_input, save_dataframe
 
 app = typer.Typer(add_completion=False)
 
@@ -75,7 +75,9 @@ def main(
         help="Override existing results.",
     ),
     use_json: bool = typer.Option(
-        False, "--json/--text", help="Print logs as JSON or text."
+        False,
+        "--json/--text",
+        help="Print logs as JSON or text.",
     ),
     method: str = typer.Option(
         "full",
@@ -119,7 +121,7 @@ def main(
     )
     if method not in ["cdr3only", "xyonly", "full"]:
         raise ValueError(
-            "Method argument provided unknow. Poissble values are 'cdr3only,xyonly,full'"
+            "Method argument provided unknow. Poissble values are 'cdr3only,xyonly,full'",
         )
 
     log = structlog.get_logger()
@@ -197,13 +199,14 @@ def main(
         save_dataframe(hilary.df, save_path=output_path)
         grouped_by_sensitive = (
             hilary.df.groupby(
-                hilary.group + ["sensitive_cluster", "clone_id"], group_keys=True
+                hilary.group + ["sensitive_cluster", "family"],
+                group_keys=True,
             )[["to_resolve"]]
             .apply(lambda x: x.sum())
             .rename(columns={"to_resolve": "count"})
         )
         grouped_by_sensitive["method"] = grouped_by_sensitive["count"].apply(
-            lambda x: "xy" if x > 0 else "cdr3"
+            lambda x: "xy" if x > 0 else "cdr3",
         )
         method_summary_path = debug_folder / Path(f"method_summary_{data_path.name}")
         log.debug(
@@ -229,13 +232,21 @@ def main(
         fraction=pair_frac,
     )
 
-    dataframe["clone_id"] = hilary.df["clone_id"]
+    dataframe["family"] = hilary.df["family"]
     dataframe["precise_cluster"] = hilary.df["precise_cluster"]
     dataframe["sensitive_cluster"] = hilary.df["sensitive_cluster"]
     output_path = result_folder / Path(f"inferred_{data_path.name}")
 
     log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
     save_dataframe(dataframe=dataframe, save_path=output_path)
+
+    if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
+        precision, sensitivity = pairwise_evaluation(df=dataframe, partition="family")
+        log.debug(
+            "Evaluating Hilary's performance on ground truth",
+            precision=precision,
+            sensitivity=sensitivity,
+        )
 
 
 if __name__ == "__main__":

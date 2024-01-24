@@ -336,7 +336,9 @@ class HILARy:
         return df["to_resolve"]
 
     def to_do(
-        self, size_threshold: float = 1e3, method: str = "full"
+        self,
+        size_threshold: float = 1e3,
+        method: str = "full",
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -378,7 +380,7 @@ class HILARy:
         """
         small_to_do, large_to_do = self.to_do(method=method)
         if sum(self.df["to_resolve"]) == 0:
-            self.df["clone_id"] = self.df["precise_cluster"]
+            self.df["family"] = self.df["precise_cluster"]
             self.df = self.df.drop(
                 columns=[
                     "cluster",
@@ -419,7 +421,7 @@ class HILARy:
             self.df["family_cluster"] = self.df.index.map(dct)
 
         self.df.fillna(value={"family_cluster": 0}, inplace=True)
-        self.df["clone_id"] = (
+        self.df["family"] = (
             self.df.groupby(
                 self.group + ["sensitive_cluster", "family_cluster"],
             ).ngroup()

@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import json
+from itertools import combinations
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
-import numpy as np
 import pandas as pd
 import structlog
 from scipy.special import binom
@@ -205,3 +205,31 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
             for key in column_dict:
                 dataframe[column_dict[key]] = dataframe[key]
     return dataframe
+
+
+def pairwise_evaluation(df: pd.DataFrame, partition: str):
+    """Evaluate performance if ground truth present in dataframe.
+
+    Args:
+        df (pd.DataFrame): dataframe to evaluate
+        partition (str): name of column corresponding to inferred partition.
+
+    Returns:
+        (precision,sensitivity)
+    """
+    if "clone_id" not in df.columns:
+        log.debug("Clone id not a column value.")
+        return None, None
+    TP = 0
+    P = binom(df.groupby(["clone_id"]).size(), 2).sum()
+    TP_FP = binom(df.groupby([partition]).size(), 2).sum()
+    for i, family in tqdm(df.groupby(["clone_id"]), disable=True):
+        for r1, r2 in combinations(family[partition], 2):
+            if r1 == r2:
+                TP += 1
+
+    if TP_FP == 0 and P > 0:
+        return 0, 1.0
+    elif P == 0:
+        return None, None
+    return TP / P, TP / TP_FP  # sensitivity, specificity, precision
