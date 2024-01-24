@@ -79,11 +79,10 @@ def main(
         "--json/--text",
         help="Print logs as JSON or text.",
     ),
-    method: str = typer.Option(
-        "full",
-        "--method",
-        help="""Whether to use cdr3 base, xy or full method. Possible values are 'full', \
-        'cdr3only', and 'xyonly'.""",
+    cdr3only: bool = typer.Option(
+        False,
+        "--cdr3only",
+        help="Use only the cdr3 method.",
     ),
 ) -> None:
     """Infer lineages from data_path excel file."""
@@ -119,11 +118,6 @@ def main(
             renderer,
         ],
     )
-    if method not in ["cdr3only", "xyonly", "full"]:
-        raise ValueError(
-            "Method argument provided unknow. Poissble values are 'cdr3only,xyonly,full'",
-        )
-
     log = structlog.get_logger()
     log.info(
         "📖 READING DATA ",
@@ -188,7 +182,7 @@ def main(
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
     hilary.compute_prec_sens_clusters()
     log.info("⏳ INFERRING FAMILIES ⏳.")
-    hilary.infer(method=method)
+    hilary.infer(cdr3only=cdr3only)
 
     if logging_level == logging.DEBUG:
         output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
@@ -241,11 +235,18 @@ def main(
     save_dataframe(dataframe=dataframe, save_path=output_path)
 
     if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
-        precision, sensitivity = pairwise_evaluation(df=dataframe, partition="family")
+        precision_full, sensitivity_full = pairwise_evaluation(
+            df=dataframe, partition="family"
+        )
+        precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
+            df=dataframe, partition="precise_cluster"
+        )
         log.debug(
             "Evaluating Hilary's performance on ground truth",
-            precision=precision,
-            sensitivity=sensitivity,
+            precision_full=precision_full,
+            sensitivity_full=sensitivity_full,
+            precision_cdr3=precision_cdr3,
+            sensitivity_cdr3=sensitivity_cdr3,
         )
 
 

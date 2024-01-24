@@ -338,7 +338,7 @@ class HILARy:
     def to_do(
         self,
         size_threshold: float = 1e3,
-        method: str = "full",
+        cdr3only: bool = False,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -349,7 +349,7 @@ class HILARy:
         Returns:
             Tuple[pd.DataFrame,pd.DataFrame]: Returns indices of small and big sensitive clusters.
         """
-        if method == "full":
+        if not cdr3only:
             self.df["to_resolve"] = False
             if not self.remaining.empty:
                 self.df["to_resolve"] = applyParallel(
@@ -358,8 +358,6 @@ class HILARy:
                     silent=True,
                 )
                 self.df.fillna(value={"to_resolve": False}, inplace=True)
-        elif method == "xyonly":
-            self.df["to_resolve"] = True
         else:
             self.df["to_resolve"] = False
 
@@ -372,13 +370,13 @@ class HILARy:
         small_to_do = sizes[~mask].index
         return small_to_do, large_to_do
 
-    def infer(self, method: str = "full") -> None:
+    def infer(self, cdr3only: bool = False) -> None:
         """Infer family clusters.
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
         """
-        small_to_do, large_to_do = self.to_do(method=method)
+        small_to_do, large_to_do = self.to_do(cdr3only=cdr3only)
         if sum(self.df["to_resolve"]) == 0:
             self.df["family"] = self.df["precise_cluster"]
             self.df = self.df.drop(
