@@ -263,15 +263,8 @@ class HILARy:
         Returns:
             pd.Series: New clusters made of grouped precise clusters.
         """
-        (
-            (
-                v_gene,
-                j_gene,
-                l,
-                sensitive_cluster,
-            ),
-            df,
-        ) = args  # (vgene, jgene, cdr3length, sensitive cluster), df
+        df = args[1]  # (vgene, jgene, cdr3length, sensitive cluster), df
+        l = args[0][2]
         indices = np.unique(df["precise_cluster"])
         if len(indices) <= 1:
             return df["precise_cluster"]
@@ -338,7 +331,7 @@ class HILARy:
     def to_do(
         self,
         size_threshold: float = 1e3,
-        cdr3only: bool = False,
+        xy_complete: bool = False,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -349,35 +342,41 @@ class HILARy:
         Returns:
             Tuple[pd.DataFrame,pd.DataFrame]: Returns indices of small and big sensitive clusters.
         """
-        if not cdr3only:
-            self.df["to_resolve"] = False
-            if not self.remaining.empty:
-                self.df["to_resolve"] = applyParallel(
-                    [self.df.groupby(self.group).get_group(g) for g in self.remaining],
-                    self.mark_class,
-                    silent=True,
-                )
-                self.df.fillna(value={"to_resolve": False}, inplace=True)
-        else:
-            self.df["to_resolve"] = False
+        self.df["to_resolve"] = False
+        if not self.remaining.empty:
+            self.df["to_resolve"] = applyParallel(
+                [self.df.groupby(self.group).get_group(g) for g in self.remaining],
+                self.mark_class,
+                silent=True,
+            )
+            self.df.fillna(value={"to_resolve": False}, inplace=True)
+        if self.remaining.empty and not xy_complete:
+            log.info("No classes passed to xy method.")
 
-        dfGrouped = self.df.query("to_resolve == True").groupby(
-            self.group + ["sensitive_cluster"],
-        )
+        if xy_complete:
+            self.df["to_resolve"] = True
+            dfGrouped = self.df.query("to_resolve == True").groupby(
+                self.group,
+            )
+        if not xy_complete:
+            dfGrouped = self.df.query("to_resolve == True").groupby(
+                self.group + ["sensitive_cluster"],
+            )
         sizes = dfGrouped.size()
         mask = sizes > size_threshold
         large_to_do = sizes[mask].index
         small_to_do = sizes[~mask].index
         return small_to_do, large_to_do
 
-    def infer(self, cdr3only: bool = False) -> None:
+    def infer(self, xy_complete: bool = False) -> None:
         """Infer family clusters.
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
         """
-        small_to_do, large_to_do = self.to_do(cdr3only=cdr3only)
+        small_to_do, large_to_do = self.to_do(xy_complete=xy_complete)
         if sum(self.df["to_resolve"]) == 0:
+            log.info("Returning cdr3 method precise clusters.")
             self.df["family"] = self.df["precise_cluster"]
             self.df = self.df.drop(
                 columns=[
@@ -385,7 +384,11 @@ class HILARy:
                 ],
             )
             return
-        dfGrouped = self.df.groupby(self.group + ["sensitive_cluster"])
+        if xy_complete:
+            log.info("Running xy method on all VJL classes.")
+            dfGrouped = self.df.groupby(self.group)
+        else:
+            dfGrouped = self.df.groupby(self.group + ["sensitive_cluster"])
         log.debug(
             "Grouping precise clusters together to reach desired sensitivity.",
         )
@@ -419,12 +422,20 @@ class HILARy:
             self.df["family_cluster"] = self.df.index.map(dct)
 
         self.df.fillna(value={"family_cluster": 0}, inplace=True)
-        self.df["family"] = (
-            self.df.groupby(
-                self.group + ["sensitive_cluster", "family_cluster"],
-            ).ngroup()
-            + 1
-        )
+        if xy_complete:
+            self.df["family"] = (
+                self.df.groupby(
+                    self.group + ["family_cluster"],
+                ).ngroup()
+                + 1
+            )
+        else:
+            self.df["family"] = (
+                self.df.groupby(
+                    self.group + ["sensitive_cluster", "family_cluster"],
+                ).ngroup()
+                + 1
+            )
         self.df = self.df.drop(
             columns=[
                 "family_cluster",

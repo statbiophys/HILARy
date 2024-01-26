@@ -84,6 +84,9 @@ def main(
         "--cdr3only",
         help="Use only the cdr3 method.",
     ),
+    xy_complete: bool = typer.Option(
+        False, "--xy-complete", help="Run xy method on all VJL classes."
+    ),
 ) -> None:
     """Infer lineages from data_path excel file."""
     if result_folder is None:
@@ -133,7 +136,6 @@ def main(
             path=input_path.as_posix(),
         )
         save_dataframe(dataframe=dataframe, save_path=input_path)
-
     apriori = Apriori(
         dataframe,
         threads=threads,
@@ -145,23 +147,24 @@ def main(
     if logging_level == logging.DEBUG:
         preprocessed_path = debug_folder / Path(f"preprocessed_input_{data_path.name}")
         log.debug(
-            "Saving dataframe after preprocessing.",
+            "Saving dataframe used by Hilary after preprocessing.",
             path=preprocessed_path.as_posix(),
         )
         save_dataframe(dataframe=apriori.df, save_path=preprocessed_path)
 
         classes_path = debug_folder / Path(f"classes_{data_path.name}")
         log.debug(
-            "Saving classes after preprocessing.",
+            "Saving classes used by Hilary after preprocessing.",
             path=classes_path.as_posix(),
         )
         save_dataframe(dataframe=apriori.classes, save_path=classes_path)
 
     log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
     apriori.get_histograms()
+
     if logging_level == logging.DEBUG:
         histogram_path = debug_folder / Path(f"histograms_{data_path.name}")
-        log.debug("Saving histograms.", path=histogram_path.as_posix())
+        log.debug("Saving histograms used by Hilary.", path=histogram_path.as_posix())
         save_dataframe(apriori.histograms, histogram_path)
 
     log.info("⏳ COMPUTING PARAMETERS ⏳.")
@@ -181,73 +184,82 @@ def main(
     hilary = HILARy(apriori)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
     hilary.compute_prec_sens_clusters()
-    log.info("⏳ INFERRING FAMILIES ⏳.")
-    hilary.infer(cdr3only=cdr3only)
 
-    if logging_level == logging.DEBUG:
-        output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
-        log.debug(
-            "Saving dataframe inferred by Hilary.",
-            path=output_path.as_posix(),
-        )
-        save_dataframe(hilary.df, save_path=output_path)
-        grouped_by_sensitive = (
-            hilary.df.groupby(
-                hilary.group + ["sensitive_cluster", "family"],
-                group_keys=True,
-            )[["to_resolve"]]
-            .apply(lambda x: x.sum())
-            .rename(columns={"to_resolve": "count"})
-        )
-        grouped_by_sensitive["method"] = grouped_by_sensitive["count"].apply(
-            lambda x: "xy" if x > 0 else "cdr3",
-        )
-        method_summary_path = debug_folder / Path(f"method_summary_{data_path.name}")
-        log.debug(
-            "Saving method distribution summary.",
-            path=method_summary_path.as_posix(),
-        )
-        save_dataframe(grouped_by_sensitive["method"], save_path=method_summary_path)
+    if cdr3only:
+        log.info("Returning cdr3 method precise clusters.")
+        dataframe["family"] = hilary.df["precise_cluster"]
 
-    pair_frac = (
-        binom(
-            hilary.df.query("to_resolve == True")
-            .groupby(hilary.group + ["sensitive_cluster"])
-            .size(),
-            2,
-        ).sum()
-        / binom(
-            hilary.df.groupby(hilary.group + ["sensitive_cluster"]).size(),
-            2,
-        ).sum()
-    )
-    log.info(
-        "Fraction of pairs that go through xy method.",
-        fraction=pair_frac,
-    )
+    else:
+        log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD⏳.")
+        hilary.infer(xy_complete=xy_complete)
 
-    dataframe["family"] = hilary.df["family"]
-    dataframe["precise_cluster"] = hilary.df["precise_cluster"]
-    dataframe["sensitive_cluster"] = hilary.df["sensitive_cluster"]
-    output_path = result_folder / Path(f"inferred_{data_path.name}")
+        if logging_level == logging.DEBUG:
+            output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
+            log.debug(
+                "Saving dataframe inferred by Hilary.",
+                path=output_path.as_posix(),
+            )
+            save_dataframe(hilary.df, save_path=output_path)
+            grouped_by_sensitive = (
+                hilary.df.groupby(
+                    hilary.group + ["sensitive_cluster", "family"],
+                    group_keys=True,
+                )[["to_resolve"]]
+                .apply(lambda x: x.sum())
+                .rename(columns={"to_resolve": "count"})
+            )
+            grouped_by_sensitive["method"] = grouped_by_sensitive["count"].apply(
+                lambda x: "xy" if x > 0 else "cdr3",
+            )
+            method_summary_path = debug_folder / Path(
+                f"method_summary_{data_path.name}"
+            )
+            log.debug(
+                "Saving method distribution summary.",
+                path=method_summary_path.as_posix(),
+            )
+            save_dataframe(
+                grouped_by_sensitive["method"], save_path=method_summary_path
+            )
 
-    log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
-    save_dataframe(dataframe=dataframe, save_path=output_path)
+        pair_frac = (
+            binom(
+                hilary.df.query("to_resolve == True")
+                .groupby(hilary.group + ["sensitive_cluster"])
+                .size(),
+                2,
+            ).sum()
+            / binom(
+                hilary.df.groupby(hilary.group + ["sensitive_cluster"]).size(),
+                2,
+            ).sum()
+        )
+        log.info(
+            "Fraction of pairs that go through xy method.",
+            fraction=pair_frac,
+        )
 
-    if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
-        precision_full, sensitivity_full = pairwise_evaluation(
-            df=dataframe, partition="family"
-        )
-        precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
-            df=dataframe, partition="precise_cluster"
-        )
-        log.debug(
-            "Evaluating Hilary's performance on ground truth",
-            precision_full=precision_full,
-            sensitivity_full=sensitivity_full,
-            precision_cdr3=precision_cdr3,
-            sensitivity_cdr3=sensitivity_cdr3,
-        )
+        dataframe["family"] = hilary.df["family"]
+        output_path = result_folder / Path(f"inferred_{data_path.name}")
+
+        log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
+        save_dataframe(dataframe=dataframe, save_path=output_path)
+
+        if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
+            precision_full, sensitivity_full = pairwise_evaluation(
+                df=dataframe, partition="family"
+            )
+            hilary.df["clone_id"] = dataframe["clone_id"]
+            precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
+                df=hilary.df, partition="precise_cluster"
+            )
+            log.debug(
+                "Evaluating Hilary's performance on ground truth",
+                precision_full_method=precision_full,
+                sensitivity_full_method=sensitivity_full,
+                precision_cdr3=precision_cdr3,
+                sensitivity_cdr3=sensitivity_cdr3,
+            )
 
 
 if __name__ == "__main__":

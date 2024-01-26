@@ -232,4 +232,4 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
         return 0, 1.0
     elif P == 0:
         return None, None
-    return TP / P, TP / TP_FP  # sensitivity, specificity, precision
+    return TP / TP_FP, TP / P  # precision, sensitivity
