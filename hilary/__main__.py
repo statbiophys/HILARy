@@ -240,6 +240,7 @@ def main(
         )
 
         dataframe["family"] = hilary.df["family"]
+        dataframe["cdr3_only_method_clustering"] = hilary.df["precise_cluster"]
         output_path = result_folder / Path(f"inferred_{data_path.name}")
 
         log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
