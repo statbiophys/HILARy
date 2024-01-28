@@ -52,7 +52,7 @@ class Apriori:
         self.threads = threads
         self.df = df
         self.threads = threads
-        self.precision = precision
+        self.precision = precision - 1e-4
         self.sensitivity = sensitivity
         self.silent = silent
         self.histograms = None
