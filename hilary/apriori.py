@@ -41,8 +41,8 @@ class Apriori:
                 Defaults to np.arange(15, 81 + 3, 3).
             nmax (int, optional): For parameter inference, sample and use nmax sequences for \
                 classes larger than nmax. Defaults to 100000.
-            precision (float, optional): Desired precision, defaults to 0.99.
-            sensitivity (float, optional): Desired sensitivity, defaults to 0.9.
+            precision (float, optional): Desired precision, defaults to 1.
+            sensitivity (float, optional): Desired sensitivity, defaults to 1.
             threads (int, optional): Number of cpus on which to run code, defaults to cpu_count().
             model (int, optional): Model name to infer Null distribution, defaults to 326713.
             silent (bool) : If true do not to show progress bars.

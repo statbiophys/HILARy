@@ -36,13 +36,13 @@ def main(
         help="Choose number of cpus on which to run code.",
     ),
     precision: float = typer.Option(
-        0.99,
+        1,
         "--precision",
         "-p",
         help="Choose desired precision.",
     ),
     sensitivity: float = typer.Option(
-        0.95,
+        1,
         "--sensitivity",
         "-s",
         help="Choose desired sensitivity.",
