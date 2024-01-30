@@ -13,15 +13,15 @@ def applyParallel(dfGrouped, func, silent=False, cpuCount=None):
 class Compatible():
     """ Make Briney et al. 2019 data compatible with AIRR schema """
     def __init__(self,
-                 filename_v=None,filename_j=None,
-                 offset_v=50,offset_j=33,
-                 threads=None):
+                filename_v=None,filename_j=None,
+                offset_v=50,offset_j=33,
+                threads=None):
         dirname = os.path.dirname(__file__)
         if filename_v is None: self.filename_v = dirname + '/data/IGHV.fasta'
         else: self.filename_v = filename_v
         if filename_j is None: self.filename_j = dirname + '/data/IGHJ.fasta'
         else: self.filename_j = filename_j
-        
+
         if threads is None: self.threads = cpu_count()-1
         else: self.threads = threads
 
@@ -50,12 +50,12 @@ class Compatible():
             for record in SeqIO.parse(fasta_file, 'fasta'):
                 descriptions.append(record.description)
                 seqs.append(str(record.seq))
-        df = pd.DataFrame(list(zip(descriptions, seqs)), columns =['label', 'germline_alignment']) 
+        df = pd.DataFrame(list(zip(descriptions, seqs)), columns =['label', 'germline_alignment'])
         head = ['_']*16
         head[1] = 'call'
-        df[head] = df['label'].str.split('|',16,expand=True)
+        df[head] = df['label'].str.split('|',n=16,expand=True)
         return df[['call','germline_alignment']]
-        
+
     def group2airr(self,args):
         (v_call,j_call,cdr3_length),df = args
         v = self.genes_v.loc[self.genes_v['call']==v_call]
@@ -71,18 +71,18 @@ class Compatible():
             df['v_germline_alignment'] = df['offset_v_germline_alignment'].str[self.offset_v:].str.upper()
             df['junction'] = (df.NN + df.vdj_nt).str[cys104:cys104+cdr3_length+6]
             df['j_sequence_alignment'] = (df.NN + df.vdj_nt).str[cys104+cdr3_length+3:].str[:self.offset_j]
-            df['j_germline_alignment'] = j['germline_alignment'].values[0][try118:].upper()[:self.offset_j] 
+            df['j_germline_alignment'] = j['germline_alignment'].values[0][try118:].upper()[:self.offset_j]
             return df[self.columns]
         else: return pd.DataFrame()
-        
+
     def df2airr(self,df):
         df.dropna(inplace=True)
         df['cdr3_length'] = df['cdr3_nt'].str.len()
-        loc = (df['chain']=='heavy') 
-        loc = loc& (df['productive']=='yes') 
-        loc = loc& (df['isotype'].str.startswith('IgG')) 
-        loc = loc& (df['v_start']<self.offset_v) 
+        loc = (df['chain']=='heavy')
+        loc = loc& (df['productive']=='yes')
+        loc = loc& (df['isotype'].str.startswith('IgG'))
+        loc = loc& (df['v_start']<self.offset_v)
         return applyParallel(df.loc[loc].groupby(self.by),
-                             self.group2airr,
-                             silent=True,
-                             cpuCount=self.threads).rename(columns=self.rename)
+                            self.group2airr,
+                            silent=True,
+                            cpuCount=self.threads).rename(columns=self.rename)

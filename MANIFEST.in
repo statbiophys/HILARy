@@ -1,0 +1,24 @@
+# MANIFEST.in
+# Control the files included or not in the source distribution
+# For further information, see
+# https://packaging.python.org/guides/using-manifest-in/
+
+# Mandatory files
+include LICENSE CHANGELOG.md
+exclude 316188_HNCHNBCXY_consensus_UID18-cdr3nt-90_minimal_071817.tar.gz
+exclude tutorial.ipynb
+exclude compatible.py
+exclude .gitignore
+exclude inference.ipynb
+exclude inference.py
+exclude apriori.py
+exclude aposteriri.py
+
+# Source code, including tests config files
+graft hilary
+
+prune dist
+prune data
+prune benchmark_data
+prune .ruff_cache
+prune doc
