@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from multiprocessing import cpu_count
 from pathlib import Path
+import numpy as np
 
 import structlog
 import typer
@@ -21,6 +22,11 @@ def main(
         ...,
         help="Path of the excel file to infer lineages.",
         show_default=False,
+    ),
+    kappa_file: Path = typer.Option(
+        None,
+        "--kappa-file",
+        help="Path of the kappa chain file, hilary will automatically use its paired option.",
     ),
     verbose: int = typer.Option(
         0,
@@ -127,6 +133,19 @@ def main(
         data_path=data_path.as_posix(),
     )
     dataframe = read_input(input_path=data_path, config=config)
+    dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
+    dataframe.set_index("sequence_id")
+
+    if kappa_file:
+        dataframe_kappa = read_input(input_path=kappa_file, config=config)
+        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip(
+            "-igk"
+        )
+        dataframe_kappa.set_index("sequence_id")
+        lengths = np.arange(57, 147 + 3, 3).astype(int)
+    else:
+        dataframe_kappa = None
+        lengths = np.arange(15, 81 + 3, 3).astype(int)
 
     log.debug("Displaying dataframe columns.", columns=dataframe.columns)
     if logging_level == logging.DEBUG:
@@ -138,6 +157,8 @@ def main(
         save_dataframe(dataframe=dataframe, save_path=input_path)
     apriori = Apriori(
         dataframe,
+        dataframe_kappa=dataframe_kappa,
+        lengths=lengths,
         threads=threads,
         precision=precision,
         sensitivity=sensitivity,
@@ -188,6 +209,8 @@ def main(
     if cdr3only:
         log.info("Returning cdr3 method precise clusters.")
         dataframe["family"] = hilary.df["precise_cluster"]
+        if dataframe_kappa is not None:
+            dataframe_kappa["family"] = hilary.df["precise_cluster"]
 
     else:
         log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD⏳.")
@@ -241,10 +264,25 @@ def main(
 
         dataframe["family"] = hilary.df["family"]
         dataframe["cdr3_only_method_clustering"] = hilary.df["precise_cluster"]
+        dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
         output_path = result_folder / Path(f"inferred_{data_path.name}")
 
         log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
         save_dataframe(dataframe=dataframe, save_path=output_path)
+
+        if dataframe_kappa is not None:
+            dataframe_kappa["family"] = hilary.df["family"]
+            dataframe_kappa["cdr3_only_method_clustering"] = hilary.df[
+                "precise_cluster"
+            ]
+            dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"] + "-igk"
+            output_path_kappa = result_folder / Path(f"inferred_{kappa_file.name}")
+
+            log.info(
+                "💾 SAVING RESULTS FOR KAPPA FILE",
+                output_path=output_path_kappa.as_posix(),
+            )
+            save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
 
         if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
             precision_full, sensitivity_full = pairwise_evaluation(

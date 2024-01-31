@@ -12,22 +12,21 @@ class EM:
     """Finds the mixture distribution
     that explains the statistics of distances"""
 
-    def __init__(self, l, h, model=326713, howmany=10, positives="geometric"):
+    def __init__(
+        self, l, h, model=326713, howmany=10, positives="geometric", cdfs=None
+    ):
         self.l = int(l)
         self.h = h.astype(int)[: self.l + 1]
         self.b = np.arange(self.l + 1, dtype=int)
         self.model = model
+        self.cdfs = cdfs
         self.const_p0 = self.readNull()
         self.howmany = howmany
         self.positives = positives
 
     def readNull(self):
         """Read estimated null distribution"""
-        dirname = Path(os.path.dirname(__file__))
-        cdfs = pd.read_csv(
-            dirname / Path(f"cdfs_{self.model}.csv"),
-        )
-        cdf = cdfs.loc[cdfs["l"] == self.l].values[0, 1 : self.l + 1]
+        cdf = self.cdfs.loc[self.cdfs["l"] == self.l].values[0, 1 : self.l + 1]
         return np.diff(cdf, prepend=[0], append=[1])
 
     def discreteExpectation(self, theta):
@@ -83,7 +82,7 @@ class EM:
         y2 = self.discreteMix(theta)
         mask = (y1 > 0) * (self.b < threshold * self.l)
         y1m, y2m = y1[mask], y2[mask]
-        logy1, logy2 = np.log(y1m), np.log(y2m)
+        logy1, logy2 = np.log(y1m + 1e-5), np.log(y2m + 1e-5)
 
         mse = ((y1m - y2m) ** 2).sum() / (mask.sum() + 1e-5)
         rmse = np.sqrt(mse)
