@@ -20,7 +20,7 @@ setup(
         "scipy>1.11,<2",
     ],
     name="hilary",
-    version="1.0.22",
+    version="1.1.0",
     url="https://github.com/statbiophys/HILARy/",
     author="Natanael Spisak, Gabriel Athènes",
     author_email="natanael.spisak@gmail.com, gabriel.athenes@polytechnique.edu",
