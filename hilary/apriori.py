@@ -25,7 +25,8 @@ class Apriori:
     def __init__(
         self,
         df: pd.DataFrame,
-        lengths=np.arange(15, 81 + 3, 3).astype(int),
+        dataframe_kappa: pd.DataFrame = None,
+        lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
         nmax: int = int(1e5),
         precision: float = 1.0,
         sensitivity: float = 1.0,
@@ -51,6 +52,7 @@ class Apriori:
         self.nmax = nmax
         self.threads = threads
         self.df = df
+        self.dataframe_kappa = dataframe_kappa
         self.threads = threads
         self.precision = precision - 1e-4
         self.sensitivity = sensitivity
@@ -58,9 +60,14 @@ class Apriori:
         self.histograms = None
         self.mean_prevalence = None
         self.mean_mean_distance = None
-        self.cdfs = pd.read_csv(
-            Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
-        )
+        if dataframe_kappa is None:
+            self.cdfs = pd.read_csv(
+                Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
+            )
+        else:
+            self.cdfs = pd.read_csv(
+                Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
+            )
         self.preprocess()
         self.classes = self.create_classes()
 
@@ -74,6 +81,15 @@ class Apriori:
             self.df,
             silent=self.silent,
         )
+        if self.dataframe_kappa is not None:
+            self.dataframe_kappa = preprocess(self.dataframe_kappa, silent=self.silent)
+            for column in self.df.columns:
+                if column == "sequence_id":
+                    continue
+                self.df[column + "_h"] = self.df[column]
+                self.df[column + "_k"] = self.dataframe_kappa[column]
+                self.df[column] = self.df[column + "_h"] + self.df[column + "_k"]
+
         return self.df
 
     def create_classes(self) -> pd.DataFrame:
@@ -103,13 +119,12 @@ class Apriori:
 
     def compute_allvjl(
         self,
-        lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
     ) -> pd.DataFrame:
         """Compute histograms for all large VJl classes.
 
         Returns:
             pd.DataFrame: Histogram of distances for large VJl classes."""
-        query = "v_gene != 'None' and pair_count >0 and cdr3_length in @lengths"
+        query = "v_gene != 'None' and pair_count >0 and cdr3_length in @self.lengths"
         groups = self.df.groupby(["v_gene", "j_gene", "cdr3_length"])
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",
@@ -141,7 +156,7 @@ class Apriori:
         hs_vjl = self.compute_allvjl()
         self.histograms = hs_vjl.sort_values(
             "class_id",
-        )[["class_id"] + [*range(81 + 1)]]
+        )[["class_id"] + [*range(self.lengths[-1] + 1)]]
         return self.histograms
 
     def estimate(self, args: tuple[tuple[int], pd.DataFrame]) -> pd.DataFrame:
@@ -155,10 +170,10 @@ class Apriori:
         """
         class_id, h = args
         l = self.classes.loc[self.classes.class_id == class_id].cdr3_length.values[0]
-        em = EM(l, h.values[0, 1:], positives="geometric")
+        em = EM(l, h.values[0, 1:], positives="geometric", cdfs=self.cdfs)
         rho_geo, mu_geo = em.discreteEM()
         error_geo = em.error([rho_geo, mu_geo])
-        em = EM(l, h.values[0, 1:], positives="poisson")
+        em = EM(l, h.values[0, 1:], positives="poisson", cdfs=self.cdfs)
         rho_poisson, mu_poisson = em.discreteEM()
         error_poisson = em.error([rho_poisson, mu_poisson])
         result = pd.DataFrame(
@@ -226,7 +241,7 @@ class Apriori:
 
         tuple_l, ldf = args
         l = tuple_l[0]
-        if l > 81 or l < 15 or l % 3 != 0:
+        if l > self.lengths[-1] or l < self.lengths[0] or l % 3 != 0:
             ldf[["precise_threshold", "sensitive_threshold"]] = (
                 np.ones((len(ldf), 2), dtype=int) * l // 5
             )
