@@ -66,7 +66,7 @@ class Apriori:
             )
         else:
             self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
+                Path(os.path.dirname(__file__)) / Path("cdfs_paired_post_50K.csv"),
             )
         self.preprocess()
         self.classes = self.create_classes()
@@ -89,7 +89,6 @@ class Apriori:
                 self.df[column + "_h"] = self.df[column]
                 self.df[column + "_k"] = self.dataframe_kappa[column]
                 self.df[column] = self.df[column + "_h"] + self.df[column + "_k"]
-
         return self.df
 
     def create_classes(self) -> pd.DataFrame:

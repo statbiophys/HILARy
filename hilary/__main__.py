@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from multiprocessing import cpu_count
 from pathlib import Path
-import numpy as np
 
+import numpy as np
 import structlog
 import typer
 from scipy.special import binom
@@ -93,6 +93,11 @@ def main(
     xy_complete: bool = typer.Option(
         False, "--xy-complete", help="Run xy method on all VJL classes."
     ),
+    xy_threshold: int = typer.Option(
+        0,
+        "--xy-threshold",
+        help="Threshold to run single linkage clustering in xy method",
+    ),
 ) -> None:
     """Infer lineages from data_path excel file."""
     if result_folder is None:
@@ -142,7 +147,7 @@ def main(
             "-igk"
         )
         dataframe_kappa.set_index("sequence_id")
-        lengths = np.arange(57, 147 + 3, 3).astype(int)
+        lengths = np.arange(57, 144 + 3, 3).astype(int)
     else:
         dataframe_kappa = None
         lengths = np.arange(15, 81 + 3, 3).astype(int)
@@ -202,7 +207,7 @@ def main(
         )
         save_dataframe(apriori.classes, parameters_path)
 
-    hilary = HILARy(apriori)
+    hilary = HILARy(apriori, xy_threshold=xy_threshold)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
     hilary.compute_prec_sens_clusters()
 
@@ -298,6 +303,7 @@ def main(
                 sensitivity_full_method=sensitivity_full,
                 precision_cdr3=precision_cdr3,
                 sensitivity_cdr3=sensitivity_cdr3,
+                threshold=xy_threshold,
             )
 
 
