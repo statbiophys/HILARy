@@ -66,7 +66,7 @@ class Apriori:
             )
         else:
             self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path("cdfs_paired_post_50K.csv"),
+                Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
             )
         self.preprocess()
         self.classes = self.create_classes()
