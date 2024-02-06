@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from multiprocessing import cpu_count
 from pathlib import Path
-import numpy as np
 
+import numpy as np
 import structlog
 import typer
 from scipy.special import binom
@@ -137,17 +137,19 @@ def main(
     dataframe.set_index("sequence_id")
 
     if kappa_file:
+        log.info("USING PAIRED OPTION.")
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
         dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip(
             "-igk"
         )
         dataframe_kappa.set_index("sequence_id")
-        lengths = np.arange(57, 147 + 3, 3).astype(int)
+        lengths = np.arange(57, 144 + 3, 3).astype(int)
+        xy_threshold = 4
     else:
         dataframe_kappa = None
         lengths = np.arange(15, 81 + 3, 3).astype(int)
+        xy_threshold = 0
 
-    log.debug("Displaying dataframe columns.", columns=dataframe.columns)
     if logging_level == logging.DEBUG:
         input_path = debug_folder / Path(f"input_{data_path.name}")
         log.debug(
@@ -202,12 +204,12 @@ def main(
         )
         save_dataframe(apriori.classes, parameters_path)
 
-    hilary = HILARy(apriori)
+    hilary = HILARy(apriori, xy_threshold=xy_threshold)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
     hilary.compute_prec_sens_clusters()
 
     if cdr3only:
-        log.info("Returning cdr3 method precise clusters.")
+        log.info("RETURNING CDR3 PRECISE CLUSTERS.")
         dataframe["family"] = hilary.df["precise_cluster"]
         if dataframe_kappa is not None:
             dataframe_kappa["family"] = hilary.df["precise_cluster"]
@@ -223,44 +225,6 @@ def main(
                 path=output_path.as_posix(),
             )
             save_dataframe(hilary.df, save_path=output_path)
-            grouped_by_sensitive = (
-                hilary.df.groupby(
-                    hilary.group + ["sensitive_cluster", "family"],
-                    group_keys=True,
-                )[["to_resolve"]]
-                .apply(lambda x: x.sum())
-                .rename(columns={"to_resolve": "count"})
-            )
-            grouped_by_sensitive["method"] = grouped_by_sensitive["count"].apply(
-                lambda x: "xy" if x > 0 else "cdr3",
-            )
-            method_summary_path = debug_folder / Path(
-                f"method_summary_{data_path.name}"
-            )
-            log.debug(
-                "Saving method distribution summary.",
-                path=method_summary_path.as_posix(),
-            )
-            save_dataframe(
-                grouped_by_sensitive["method"], save_path=method_summary_path
-            )
-
-        pair_frac = (
-            binom(
-                hilary.df.query("to_resolve == True")
-                .groupby(hilary.group + ["sensitive_cluster"])
-                .size(),
-                2,
-            ).sum()
-            / binom(
-                hilary.df.groupby(hilary.group + ["sensitive_cluster"]).size(),
-                2,
-            ).sum()
-        )
-        log.info(
-            "Fraction of pairs that go through xy method.",
-            fraction=pair_frac,
-        )
 
         dataframe["family"] = hilary.df["family"]
         dataframe["cdr3_only_method_clustering"] = hilary.df["precise_cluster"]
@@ -293,7 +257,7 @@ def main(
                 df=hilary.df, partition="precise_cluster"
             )
             log.debug(
-                "Evaluating Hilary's performance on ground truth",
+                "Evaluating Hilary's performance on ground truth column 'clone_id'.",
                 precision_full_method=precision_full,
                 sensitivity_full_method=sensitivity_full,
                 precision_cdr3=precision_cdr3,

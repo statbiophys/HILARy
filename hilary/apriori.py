@@ -89,7 +89,6 @@ class Apriori:
                 self.df[column + "_h"] = self.df[column]
                 self.df[column + "_k"] = self.dataframe_kappa[column]
                 self.df[column] = self.df[column + "_h"] + self.df[column + "_k"]
-
         return self.df
 
     def create_classes(self) -> pd.DataFrame:

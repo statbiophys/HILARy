@@ -197,7 +197,7 @@ class DistanceMatrix:
 class HILARy:
     """Infer families using CDR3 and mutation information"""
 
-    def __init__(self, apriori: Apriori):
+    def __init__(self, apriori: Apriori, xy_threshold: int = 0):
         """Initialize Hilary attributes using Apriori object.
 
         Args:
@@ -213,7 +213,9 @@ class HILARy:
             "mutation_count",
             "index",
         ]
-        self.alignment_length = 250
+        self.alignment_length = len(apriori.df["alt_sequence_alignment"].values[0])
+        log.info("Alignment length", alignment_length=self.alignment_length)
+        self.xy_threshold = xy_threshold
         self.x0 = 0.0
         self.y0 = 0.0
         self.remaining = (
@@ -303,7 +305,7 @@ class HILARy:
         sl = self.singleLinkage(
             indices,
             squareform(distanceMatrix),
-            threshold=self.x0 - self.y0 + 100.0,
+            threshold=self.x0 - self.y0 + 100.0 + self.xy_threshold,
         )
         return df["precise_cluster"].map(sl)
 
@@ -417,7 +419,7 @@ class HILARy:
             dct = self.singleLinkage(
                 dfGrouped.get_group(g).index,
                 d,
-                self.x0 - self.y0 + 100.0,
+                self.x0 - self.y0 + 100.0 + self.xy_threshold,
             )
             self.df["family_cluster"] = self.df.index.map(dct)
 

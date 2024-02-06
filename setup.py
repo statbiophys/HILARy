@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from setuptools import find_packages
-from setuptools import setup
-
 from hilary import __version__
+from setuptools import find_packages, setup
 
 setup(
     install_requires=[
@@ -20,7 +18,7 @@ setup(
         "scipy>1.11,<2",
     ],
     name="hilary",
-    version="1.1.0",
+    version="1.1.2",
     url="https://github.com/statbiophys/HILARy/",
     author="Natanael Spisak, Gabriel Athènes",
     author_email="natanael.spisak@gmail.com, gabriel.athenes@polytechnique.edu",
