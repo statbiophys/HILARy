@@ -176,6 +176,7 @@ class DistanceMatrix:
             b = self.data[j, :]
             d = self.metric(a, b)
             dist.append(d)
+            log.debug("Report indices", i=i, j=j, k=k)
         return k1, k2, dist
 
     def compute(self) -> np.ndarray:
@@ -332,7 +333,7 @@ class HILARy:
 
     def to_do(
         self,
-        size_threshold: float = 1e3,
+        size_threshold: float = 1,
         xy_complete: bool = False,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
@@ -416,6 +417,8 @@ class HILARy:
             )
 
             d = dm.compute()
+            log.debug("Matrix size", size=d.shape)
+
             dct = self.singleLinkage(
                 dfGrouped.get_group(g).index,
                 d,

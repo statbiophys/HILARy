@@ -128,6 +128,9 @@ def main(
         ],
     )
     log = structlog.get_logger()
+    log.debug(
+        "📖 Full linkage ",
+    )
     log.info(
         "📖 READING DATA ",
         data_path=data_path.as_posix(),
