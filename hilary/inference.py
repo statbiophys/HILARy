@@ -108,7 +108,7 @@ class DistanceMatrix:
         self.n = self.data.shape[0]
         # maximum elements in 1D dist array
         self.k_max = self.n * (self.n - 1) // 2
-        self.k_step = self.n**2 // 2 // (500)  # ~500 bulks
+        self.k_step = max(self.n**2 // 2 // (500), 1)  # ~500 bulks
 
     def metric(
         self,
