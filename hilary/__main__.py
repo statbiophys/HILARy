@@ -11,7 +11,7 @@ from scipy.special import binom
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
-from hilary.utils import pairwise_evaluation, read_input, save_dataframe
+from hilary.utils import create_classes, pairwise_evaluation, read_input, save_dataframe
 
 app = typer.Typer(add_completion=False)
 
@@ -139,6 +139,7 @@ def main(
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
 
+    paired = False
     if kappa_file:
         log.info("USING PAIRED OPTION.")
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
@@ -148,6 +149,7 @@ def main(
         dataframe_kappa.set_index("sequence_id")
         lengths = np.arange(57, 144 + 3, 3).astype(int)
         xy_threshold = 4
+        paired = True
     else:
         dataframe_kappa = None
         lengths = np.arange(15, 81 + 3, 3).astype(int)
@@ -161,8 +163,7 @@ def main(
         )
         save_dataframe(dataframe=dataframe, save_path=input_path)
     apriori = Apriori(
-        dataframe,
-        dataframe_kappa=dataframe_kappa,
+        paired=paired,
         lengths=lengths,
         threads=threads,
         precision=precision,
@@ -170,13 +171,16 @@ def main(
         model=model,
         silent=silent,
     )
+    dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=dataframe_kappa)
+    apriori.classes = create_classes(dataframe_processed)
+
     if logging_level == logging.DEBUG:
         preprocessed_path = debug_folder / Path(f"preprocessed_input_{data_path.name}")
         log.debug(
             "Saving dataframe used by Hilary after preprocessing.",
             path=preprocessed_path.as_posix(),
         )
-        save_dataframe(dataframe=apriori.df, save_path=preprocessed_path)
+        save_dataframe(dataframe=dataframe_processed, save_path=preprocessed_path)
 
         classes_path = debug_folder / Path(f"classes_{data_path.name}")
         log.debug(
@@ -186,7 +190,7 @@ def main(
         save_dataframe(dataframe=apriori.classes, save_path=classes_path)
 
     log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
-    apriori.get_histograms()
+    apriori.get_histograms(dataframe_processed)
 
     if logging_level == logging.DEBUG:
         histogram_path = debug_folder / Path(f"histograms_{data_path.name}")
@@ -209,63 +213,66 @@ def main(
 
     hilary = HILARy(apriori, xy_threshold=xy_threshold)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
-    hilary.compute_prec_sens_clusters()
+
+    dataframe_cdr3 = hilary.compute_prec_sens_clusters(dataframe_processed)
 
     if cdr3only:
         log.info("RETURNING CDR3 PRECISE CLUSTERS.")
-        dataframe["family"] = hilary.df["precise_cluster"]
-        if dataframe_kappa is not None:
-            dataframe_kappa["family"] = hilary.df["precise_cluster"]
+        dataframe["family"] = dataframe_cdr3["precise_cluster"]
+        if paired:
+            dataframe_kappa["family"] = dataframe_cdr3["precise_cluster"]
+        return
 
-    else:
-        log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD⏳.")
-        hilary.infer(xy_complete=xy_complete)
+    log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD⏳.")
+    log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")
+    apriori.get_xy_thresholds(df=dataframe_cdr3)
+    dataframe_inferred = hilary.infer(df=dataframe_cdr3, xy_complete=xy_complete)
 
-        if logging_level == logging.DEBUG:
-            output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
-            log.debug(
-                "Saving dataframe inferred by Hilary.",
-                path=output_path.as_posix(),
-            )
-            save_dataframe(hilary.df, save_path=output_path)
+    if logging_level == logging.DEBUG:
+        output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
+        log.debug(
+            "Saving dataframe inferred by Hilary.",
+            path=output_path.as_posix(),
+        )
+        save_dataframe(dataframe_inferred, save_path=output_path)
 
-        dataframe["family"] = hilary.df["family"]
-        dataframe["cdr3_only_method_clustering"] = hilary.df["precise_cluster"]
-        dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
-        output_path = result_folder / Path(f"inferred_{data_path.name}")
+    dataframe["family"] = dataframe_inferred["family"]
+    dataframe["cdr3_only_method_clustering"] = dataframe_inferred["precise_cluster"]
+    dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
+    output_path = result_folder / Path(f"inferred_{data_path.name}")
 
-        log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
-        save_dataframe(dataframe=dataframe, save_path=output_path)
+    log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
+    save_dataframe(dataframe=dataframe, save_path=output_path)
 
-        if dataframe_kappa is not None:
-            dataframe_kappa["family"] = hilary.df["family"]
-            dataframe_kappa["cdr3_only_method_clustering"] = hilary.df[
-                "precise_cluster"
-            ]
-            dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"] + "-igk"
-            output_path_kappa = result_folder / Path(f"inferred_{kappa_file.name}")
+    if dataframe_kappa is not None:
+        dataframe_kappa["family"] = dataframe_inferred["family"]
+        dataframe_kappa["cdr3_only_method_clustering"] = dataframe_inferred[
+            "precise_cluster"
+        ]
+        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"] + "-igk"
+        output_path_kappa = result_folder / Path(f"inferred_{kappa_file.name}")
 
-            log.info(
-                "💾 SAVING RESULTS FOR KAPPA FILE",
-                output_path=output_path_kappa.as_posix(),
-            )
-            save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
+        log.info(
+            "💾 SAVING RESULTS FOR KAPPA FILE",
+            output_path=output_path_kappa.as_posix(),
+        )
+        save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
 
-        if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
-            precision_full, sensitivity_full = pairwise_evaluation(
-                df=dataframe, partition="family"
-            )
-            hilary.df["clone_id"] = dataframe["clone_id"]
-            precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
-                df=hilary.df, partition="precise_cluster"
-            )
-            log.debug(
-                "Evaluating Hilary's performance on ground truth column 'clone_id'.",
-                precision_full_method=precision_full,
-                sensitivity_full_method=sensitivity_full,
-                precision_cdr3=precision_cdr3,
-                sensitivity_cdr3=sensitivity_cdr3,
-            )
+    if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
+        precision_full, sensitivity_full = pairwise_evaluation(
+            df=dataframe, partition="family"
+        )
+        dataframe_inferred["clone_id"] = dataframe["clone_id"]
+        precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
+            df=dataframe_inferred, partition="precise_cluster"
+        )
+        log.debug(
+            "Evaluating Hilary's performance on ground truth column 'clone_id'.",
+            precision_full_method=precision_full,
+            sensitivity_full_method=sensitivity_full,
+            precision_cdr3=precision_cdr3,
+            sensitivity_cdr3=sensitivity_cdr3,
+        )
 
 
 if __name__ == "__main__":

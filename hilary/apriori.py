@@ -12,7 +12,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, create_classes, preprocess
+from hilary.utils import applyParallel, create_classes, preprocess, pRequired
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -24,8 +24,6 @@ class Apriori:
 
     def __init__(
         self,
-        df: pd.DataFrame,
-        dataframe_kappa: pd.DataFrame = None,
         lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
         nmax: int = int(1e5),
         precision: float = 1.0,
@@ -33,6 +31,7 @@ class Apriori:
         threads: int = cpu_count() - 1,
         model: int = 326713,
         silent: bool = False,
+        paired: bool = False,
     ):
         """Initialize attributes to later run class methods.
 
@@ -51,8 +50,6 @@ class Apriori:
         self.lengths = lengths
         self.nmax = nmax
         self.threads = threads
-        self.df = df
-        self.dataframe_kappa = dataframe_kappa
         self.threads = threads
         self.precision = precision - 1e-4
         self.sensitivity = sensitivity
@@ -60,7 +57,8 @@ class Apriori:
         self.histograms = None
         self.mean_prevalence = None
         self.mean_mean_distance = None
-        if dataframe_kappa is None:
+        self.paired = paired
+        if not paired:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
             )
@@ -68,33 +66,27 @@ class Apriori:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
             )
-        self.preprocess()
-        self.classes = self.create_classes()
+        self.classes = pd.DataFrame()
 
-    def preprocess(self) -> pd.DataFrame:
+    def preprocess(self, df, df_kappa) -> pd.DataFrame:
         """Remove non productive sequences from dataframe.
 
         Returns:
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        self.df = preprocess(
-            self.df,
+        df = preprocess(
+            df,
             silent=self.silent,
         )
-        if self.dataframe_kappa is not None:
-            self.dataframe_kappa = preprocess(self.dataframe_kappa, silent=self.silent)
-            for column in self.df.columns:
+        if self.paired:
+            df_kappa = preprocess(df_kappa, silent=self.silent)
+            for column in df.columns:
                 if column == "sequence_id":
                     continue
-                self.df[column + "_h"] = self.df[column]
-                self.df[column + "_k"] = self.dataframe_kappa[column]
-                self.df[column] = self.df[column + "_h"] + self.df[column + "_k"]
-        return self.df
-
-    def create_classes(self) -> pd.DataFrame:
-        """Create VJl and l classes from self.df."""
-        self.classes = create_classes(self.df)
-        return self.classes
+                df[column + "_h"] = df[column]
+                df[column + "_k"] = df_kappa[column]
+                df[column] = df[column + "_h"] + df[column + "_k"]
+        return df
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class
@@ -118,13 +110,14 @@ class Apriori:
 
     def compute_allvjl(
         self,
+        df,
     ) -> pd.DataFrame:
         """Compute histograms for all large VJl classes.
 
         Returns:
             pd.DataFrame: Histogram of distances for large VJl classes."""
         query = "v_gene != 'None' and pair_count >0 and cdr3_length in @self.lengths"
-        groups = self.df.groupby(["v_gene", "j_gene", "cdr3_length"])
+        groups = df.groupby(["v_gene", "j_gene", "cdr3_length"])
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",
         )
@@ -142,17 +135,15 @@ class Apriori:
             cpuCount=self.threads,
             silent=self.silent,
         )
-        if results.empty:
-            results = pd.DataFrame(columns=[*range(81 + 1)])
         results["class_id"] = results.index
         return results
 
-    def get_histograms(self) -> pd.DataFrame:
+    def get_histograms(self, df) -> pd.DataFrame:
         """Compute histograms for all large classes
 
         Returns:
             pd.DataFrame: Histogram of distances for all large classes."""
-        hs_vjl = self.compute_allvjl()
+        hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
             "class_id",
         )[["class_id"] + [*range(self.lengths[-1] + 1)]]
@@ -224,6 +215,78 @@ class Apriori:
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
             0.2,
         )
+
+    def simulate_xs_ys(
+        self,
+        args,
+    ):
+        size = int(1e4)
+        (v_gene, j_gene, l, prevalence, mutations, alignment_length) = args
+        if l not in self.lengths:
+            return
+        if v_gene == "None":
+            return 0
+        bins = np.arange(np.max(mutations) + 1)
+        pni, nis = np.histogram(mutations, bins=bins)
+        p = pni[1:] / sum(pni[1:])
+        n1s = np.random.choice(nis[1:-1], size=size, replace=True, p=p)
+        n2s = np.random.choice(nis[1:-1], size=size, replace=True, p=p)
+        exp_n0 = n1s * n2s / alignment_length
+        n0s = np.random.poisson(lam=exp_n0, size=size)
+        std_n0 = np.sqrt(exp_n0)
+        ys = (n0s - exp_n0) / std_n0
+
+        cdf = self.cdfs.loc[self.cdfs["l"] == l].values[0, 1 : l + 1]
+        pn = np.diff(cdf, prepend=[0], append=[1])
+        ns = np.random.choice(
+            np.arange(l + 1), size=size, replace=True, p=pn / pn.sum()
+        )
+        nLs = n1s + n2s - 2 * n0s
+        exp_n = l * (nLs + 1)
+        std_n = np.sqrt(exp_n * (l + alignment_length) / alignment_length)
+        xs = (ns - exp_n) / std_n
+        zs = xs - ys
+
+        return np.sort(zs)[min(int(size * pRequired(prevalence)), int(size) - 1)]
+
+    def get_xy_thresholds(self, df):
+        alignment_length = len(df["alt_sequence_alignment"].values[0])
+        """self.classes["xy_threshold"] = self.classes.apply(
+            lambda x: self.simulate_xs_ys(
+                x.v_gene,
+                x.j_gene,
+                x.cdr3_length,
+                x.effective_prevalence,
+                df,
+                alignment_length,
+            ),
+            axis=1,
+        )"""
+        mutations_grouped = []
+        for (v_gene, j_gene, cdr3_length, prevalence), _ in self.classes.groupby(
+            ["v_gene", "j_gene", "cdr3_length", "effective_prevalence"]
+        ):
+            mutations_grouped.append(
+                (
+                    v_gene,
+                    j_gene,
+                    cdr3_length,
+                    prevalence,
+                    df.query(
+                        "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
+                    )["mutation_count"],
+                    alignment_length,
+                )
+            )
+
+        result = applyParallel(
+            mutations_grouped,
+            self.simulate_xs_ys,
+            cpuCount=self.threads,
+            silent=self.silent,
+            isint=True,
+        )
+        self.classes["xy_threshold"] = pd.Series(result)
 
     def assign_precise_sensitive_thresholds(
         self,
