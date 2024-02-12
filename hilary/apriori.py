@@ -12,7 +12,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, create_classes, preprocess
+from hilary.utils import applyParallel, create_classes, preprocess, pRequired
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -24,8 +24,6 @@ class Apriori:
 
     def __init__(
         self,
-        df: pd.DataFrame,
-        dataframe_kappa: pd.DataFrame = None,
         lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
         nmax: int = int(1e5),
         precision: float = 1.0,
@@ -33,6 +31,7 @@ class Apriori:
         threads: int = cpu_count() - 1,
         model: int = 326713,
         silent: bool = False,
+        paired: bool = False,
     ):
         """Initialize attributes to later run class methods.
 
@@ -51,8 +50,6 @@ class Apriori:
         self.lengths = lengths
         self.nmax = nmax
         self.threads = threads
-        self.df = df
-        self.dataframe_kappa = dataframe_kappa
         self.threads = threads
         self.precision = precision - 1e-4
         self.sensitivity = sensitivity
@@ -60,7 +57,8 @@ class Apriori:
         self.histograms = None
         self.mean_prevalence = None
         self.mean_mean_distance = None
-        if dataframe_kappa is None:
+        self.paired = paired
+        if not paired:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
             )
@@ -68,33 +66,27 @@ class Apriori:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
             )
-        self.preprocess()
-        self.classes = self.create_classes()
+        self.classes = pd.DataFrame()
 
-    def preprocess(self) -> pd.DataFrame:
+    def preprocess(self, df, df_kappa) -> pd.DataFrame:
         """Remove non productive sequences from dataframe.
 
         Returns:
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        self.df = preprocess(
-            self.df,
+        df = preprocess(
+            df,
             silent=self.silent,
         )
-        if self.dataframe_kappa is not None:
-            self.dataframe_kappa = preprocess(self.dataframe_kappa, silent=self.silent)
-            for column in self.df.columns:
+        if self.paired:
+            df_kappa = preprocess(df_kappa, silent=self.silent)
+            for column in df.columns:
                 if column == "sequence_id":
                     continue
-                self.df[column + "_h"] = self.df[column]
-                self.df[column + "_k"] = self.dataframe_kappa[column]
-                self.df[column] = self.df[column + "_h"] + self.df[column + "_k"]
-        return self.df
-
-    def create_classes(self) -> pd.DataFrame:
-        """Create VJl and l classes from self.df."""
-        self.classes = create_classes(self.df)
-        return self.classes
+                df[column + "_h"] = df[column]
+                df[column + "_k"] = df_kappa[column]
+                df[column] = df[column + "_h"] + df[column + "_k"]
+        return df
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class
@@ -118,13 +110,14 @@ class Apriori:
 
     def compute_allvjl(
         self,
+        df,
     ) -> pd.DataFrame:
         """Compute histograms for all large VJl classes.
 
         Returns:
             pd.DataFrame: Histogram of distances for large VJl classes."""
         query = "v_gene != 'None' and pair_count >0 and cdr3_length in @self.lengths"
-        groups = self.df.groupby(["v_gene", "j_gene", "cdr3_length"])
+        groups = df.groupby(["v_gene", "j_gene", "cdr3_length"])
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",
         )
@@ -142,17 +135,15 @@ class Apriori:
             cpuCount=self.threads,
             silent=self.silent,
         )
-        if results.empty:
-            results = pd.DataFrame(columns=[*range(81 + 1)])
         results["class_id"] = results.index
         return results
 
-    def get_histograms(self) -> pd.DataFrame:
+    def get_histograms(self, df) -> pd.DataFrame:
         """Compute histograms for all large classes
 
         Returns:
             pd.DataFrame: Histogram of distances for all large classes."""
-        hs_vjl = self.compute_allvjl()
+        hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
             "class_id",
         )[["class_id"] + [*range(self.lengths[-1] + 1)]]

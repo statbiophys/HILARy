@@ -21,6 +21,7 @@ def applyParallel(
     func: Callable,
     cpuCount: int = cpu_count(),
     silent=False,
+    isint=False,
 ) -> pd.DataFrame:
     """Parallely runs func on each group of dfGrouped.
 
@@ -37,6 +38,8 @@ def applyParallel(
         ret_list = list(
             tqdm(p.imap(func, dfGrouped), total=len(dfGrouped), disable=silent),
         )
+    if isint:
+        return ret_list
     if len(ret_list) == 0:
         return pd.DataFrame()
     return pd.concat(ret_list)
@@ -233,3 +236,7 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
     elif P == 0:
         return None, None
     return TP / TP_FP, TP / P  # precision, sensitivity
+
+
+def pRequired(rho, pi=0.99):
+    return rho / (1 + 1e-5 - rho) * (1 - pi) / pi

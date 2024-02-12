@@ -8,7 +8,7 @@ setup(
         "setuptools>=56,<57",
         "numpy>=1.20.0,<2",
         "openpyxl>=3.1,<4",
-        "pandas>=2.1,<3",
+        "pandas>=2.1,<2.2",
         "scipy>=1.6,<2",
         "structlog>=22.3.0,<23",
         "textdistance>=4.6,<5",

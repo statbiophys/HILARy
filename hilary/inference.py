@@ -88,6 +88,7 @@ class DistanceMatrix:
     def __init__(
         self,
         l: int,
+        alignment_length: int,
         df: pd.DataFrame,
         threads: int = cpu_count() - 1,
     ) -> None:
@@ -100,15 +101,14 @@ class DistanceMatrix:
         """
         self.threads = threads
         self.l = l
-        self.L = 250
+        self.L = alignment_length
         self.l_L = l / self.L
-        self.l_L_L = l / (l + self.L)
-
+        self.l_L_L = (l + self.L) / self.L
         self.data = df.values
         self.n = self.data.shape[0]
         # maximum elements in 1D dist array
         self.k_max = self.n * (self.n - 1) // 2
-        self.k_step = self.n**2 // 2 // (500)  # ~500 bulks
+        self.k_step = max(self.n**2 // 2 // (500), 3)  # ~500 bulks
 
     def metric(
         self,
@@ -128,9 +128,9 @@ class DistanceMatrix:
         cdr31, s1, n1, i1 = arg1
         cdr32, s2, n2, i2 = arg2
         if i1 == i2:
-            return -100.0
+            return -self.L
         if n1 * n2 == 0:
-            return 100.0
+            return self.L
         n = hamming(cdr31, cdr32)
         nL = hamming(s1, s2)
         n0 = (n1 + n2 - nL) / 2
@@ -191,7 +191,7 @@ class DistanceMatrix:
                 range(0, self.k_max, self.k_step),
             ):
                 dist[k1:k2] = res
-        return dist + 100.0
+        return dist + self.L
 
 
 class HILARy:
@@ -205,7 +205,6 @@ class HILARy:
         """
 
         self.group = ["v_gene", "j_gene", "cdr3_length"]
-        self.df = apriori.df
         self.classes = apriori.classes
         self.use = [
             "cdr3",
@@ -213,11 +212,8 @@ class HILARy:
             "mutation_count",
             "index",
         ]
-        self.alignment_length = len(apriori.df["alt_sequence_alignment"].values[0])
-        log.info("Alignment length", alignment_length=self.alignment_length)
+        self.alignment_length = None
         self.xy_threshold = xy_threshold
-        self.x0 = 0.0
-        self.y0 = 0.0
         self.remaining = (
             self.classes.query(
                 "v_gene != 'None' and precise_threshold < sensitive_threshold and pair_count > 0",
@@ -227,6 +223,8 @@ class HILARy:
             .index
         )
         self.silent = apriori.silent
+        self.cdfs = apriori.cdfs
+        self.lengths = apriori.lengths
 
     def singleLinkage(
         self,
@@ -274,49 +272,63 @@ class HILARy:
         translateIndices = dict(zip(indices, range(len(indices))))
         df["index"] = df["precise_cluster"].map(translateIndices)
         dim = len(indices)
-        distanceMatrix = np.ones((dim, dim), dtype=float) * (200)
+        distanceMatrix = np.ones((dim, dim), dtype=float) * (2 * self.alignment_length)
         for i in range(dim):
             distanceMatrix[i, i] = 0
+            for j in range(i):
+                distance_list = []
+                for cdr31, s1, n1 in df.query("index==@i")[
+                    [
+                        "cdr3",
+                        "alt_sequence_alignment",
+                        "mutation_count",
+                    ]
+                ].values:
+                    for cdr32, s2, n2 in df.query("index==@j")[
+                        [
+                            "cdr3",
+                            "alt_sequence_alignment",
+                            "mutation_count",
+                        ]
+                    ].values:
+                        if n1 * n2 == 0:
+                            continue
+                        n = hamming(cdr31, cdr32)
+                        nL = hamming(s1, s2)
+                        n0 = (n1 + n2 - nL) / 2
 
-        for (cdr31, s1, n1, i1), (cdr32, s2, n2, i2) in combinations(
-            df[self.use].values,
-            2,
-        ):
-            if i1 == i2 or n1 * n2 == 0:
-                continue
-            n = hamming(cdr31, cdr32)
-            nL = hamming(s1, s2)
-            n0 = (n1 + n2 - nL) / 2
+                        exp_n = l / self.alignment_length * (nL + 1)
+                        std_n = np.sqrt(
+                            exp_n * (l + self.alignment_length) / self.alignment_length,
+                        )
 
-            exp_n = l / self.alignment_length * (nL + 1)
-            std_n = np.sqrt(
-                exp_n * (l + self.alignment_length) / self.alignment_length,
-            )
+                        exp_n0 = n1 * n2 / self.alignment_length
+                        std_n0 = np.sqrt(exp_n0)
 
-            exp_n0 = n1 * n2 / self.alignment_length
-            std_n0 = np.sqrt(exp_n0)
+                        x = (n - exp_n) / std_n
+                        y = (n0 - exp_n0) / std_n0
+                        distance = x - y + self.alignment_length
+                        distance_list.append(distance)
 
-            x = (n - exp_n) / std_n
-            y = (n0 - exp_n0) / std_n0
-            distance = x - y + 100.0
-            distanceMatrix[i1, i2] = distance
-            distanceMatrix[i2, i1] = distance
-
+                distance = np.min(distance_list)
+                distanceMatrix[i, j] = distance
+                distanceMatrix[j, i] = distance
         sl = self.singleLinkage(
             indices,
             squareform(distanceMatrix),
-            threshold=self.x0 - self.y0 + 100.0 + self.xy_threshold,
+            threshold=self.alignment_length + self.xy_threshold,
         )
         return df["precise_cluster"].map(sl)
 
-    def compute_prec_sens_clusters(self) -> None:
+    def compute_prec_sens_clusters(self, df) -> None:
         """Infer precise and sensitive clusters."""
         prec = CDR3Clustering(self.classes[self.group + ["precise_threshold"]])
         sens = CDR3Clustering(
             self.classes[self.group + ["sensitive_threshold"]],
         )
-        self.df["precise_cluster"] = prec.infer(self.df, silent=self.silent)
-        self.df["sensitive_cluster"] = sens.infer(self.df, silent=self.silent)
+        df["precise_cluster"] = prec.infer(df, silent=self.silent)
+        df["sensitive_cluster"] = sens.infer(df, silent=self.silent)
+        return df
 
     def mark_class(self, df: pd.DataFrame) -> pd.Series:
         """Flag all indices of a sensitive cluster not reaching desired sensitivity.
@@ -332,8 +344,8 @@ class HILARy:
 
     def to_do(
         self,
-        size_threshold: float = 1e3,
-        xy_complete: bool = False,
+        df,
+        size_threshold: float = 500,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -344,68 +356,60 @@ class HILARy:
         Returns:
             Tuple[pd.DataFrame,pd.DataFrame]: Returns indices of small and big sensitive clusters.
         """
-        self.df["to_resolve"] = False
-        if not self.remaining.empty:
-            self.df["to_resolve"] = applyParallel(
-                [self.df.groupby(self.group).get_group(g) for g in self.remaining],
+        df["to_resolve"] = False
+        if self.remaining.empty:
+            log.info("No classes passed to xy method.")
+        else:
+            df["to_resolve"] = applyParallel(
+                [df.groupby(self.group).get_group(g) for g in self.remaining],
                 self.mark_class,
                 silent=True,
             )
-            self.df.fillna(value={"to_resolve": False}, inplace=True)
-        if self.remaining.empty and not xy_complete:
-            log.info("No classes passed to xy method.")
-
-        if xy_complete:
-            self.df["to_resolve"] = True
-            dfGrouped = self.df.query("to_resolve == True").groupby(
-                self.group,
-            )
-        if not xy_complete:
-            dfGrouped = self.df.query("to_resolve == True").groupby(
-                self.group + ["sensitive_cluster"],
-            )
+            df.fillna(value={"to_resolve": False}, inplace=True)
+        dfGrouped = df.query("to_resolve == True").groupby(
+            self.group + ["sensitive_cluster"],
+        )
         sizes = dfGrouped.size()
         mask = sizes > size_threshold
         large_to_do = sizes[mask].index
         small_to_do = sizes[~mask].index
-        return small_to_do, large_to_do
+        return df, small_to_do, large_to_do
 
-    def infer(self, xy_complete: bool = False) -> None:
+    def infer(self, df) -> None:
         """Infer family clusters.
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
         """
-        small_to_do, large_to_do = self.to_do(xy_complete=xy_complete)
-        if sum(self.df["to_resolve"]) == 0:
+        df, small_to_do, large_to_do = self.to_do(df)
+        self.alignment_length = len(df["alt_sequence_alignment"].values[0])
+        log.info("Alignment length", alignment_length=self.alignment_length)
+
+        if sum(df["to_resolve"]) == 0:
             log.info("Returning cdr3 method precise clusters.")
-            self.df["family"] = self.df["precise_cluster"]
-            self.df = self.df.drop(
+            df["family"] = df["precise_cluster"]
+            df = df.drop(
                 columns=[
                     "cluster",
                 ],
             )
             return
-        if xy_complete:
-            log.info("Running xy method on all VJL classes.")
-            dfGrouped = self.df.groupby(self.group)
-        else:
-            dfGrouped = self.df.groupby(self.group + ["sensitive_cluster"])
-        log.debug(
-            "Grouping precise clusters together to reach desired sensitivity.",
-        )
+
+        dfGrouped = df.groupby(self.group + ["sensitive_cluster"])
         log.debug("Inferring family clusters for small groups.")
-        self.df["family_cluster"] = applyParallel(
+        df["family_cluster"] = applyParallel(
             [(g, dfGrouped.get_group(g)) for g in small_to_do],
             self.class2pairs,
             silent=self.silent,
         )
         log.debug("Inferring family clusters for large groups.")
+        large_dict = {}
         for g in large_to_do:
-            _, _, l, _ = g  # (vgene, jgene, cdr3length, sensitive cluster)
+            _, _, l, _ = g
             dm = DistanceMatrix(
-                l,
-                dfGrouped.get_group(g)[
+                l=l,
+                alignment_length=self.alignment_length,
+                df=dfGrouped.get_group(g)[
                     [
                         "cdr3",
                         "alt_sequence_alignment",
@@ -414,32 +418,27 @@ class HILARy:
                     ]
                 ],
             )
-
             d = dm.compute()
             dct = self.singleLinkage(
-                dfGrouped.get_group(g).index,
-                d,
-                self.x0 - self.y0 + 100.0 + self.xy_threshold,
+                indices=dfGrouped.get_group(g).index,
+                dist=d,
+                threshold=self.alignment_length + self.xy_threshold,
             )
-            self.df["family_cluster"] = self.df.index.map(dct)
-
-        self.df.fillna(value={"family_cluster": 0}, inplace=True)
-        if xy_complete:
-            self.df["family"] = (
-                self.df.groupby(
-                    self.group + ["family_cluster"],
-                ).ngroup()
-                + 1
-            )
-        else:
-            self.df["family"] = (
-                self.df.groupby(
-                    self.group + ["sensitive_cluster", "family_cluster"],
-                ).ngroup()
-                + 1
-            )
-        self.df = self.df.drop(
+            large_dict.update(dct)
+        df["new_index"] = df.index
+        df["family_cluster"] = df["family_cluster"].fillna(
+            df["new_index"].replace(large_dict)
+        )
+        df.fillna(value={"family_cluster": 0}, inplace=True)
+        df["family"] = (
+            df.groupby(
+                self.group + ["sensitive_cluster", "family_cluster"],
+            ).ngroup()
+            + 1
+        )
+        df = df.drop(
             columns=[
                 "family_cluster",
             ],
         )
+        return df
