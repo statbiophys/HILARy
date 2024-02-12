@@ -91,7 +91,6 @@ class DistanceMatrix:
         alignment_length: int,
         df: pd.DataFrame,
         threads: int = cpu_count() - 1,
-        xy_threshold: int = 0,
     ) -> None:
         """Initialize attributes.
 
@@ -105,7 +104,6 @@ class DistanceMatrix:
         self.L = alignment_length
         self.l_L = l / self.L
         self.l_L_L = (l + self.L) / self.L
-
         self.data = df.values
         self.n = self.data.shape[0]
         # maximum elements in 1D dist array
@@ -216,7 +214,6 @@ class HILARy:
         ]
         self.alignment_length = None
         self.xy_threshold = xy_threshold
-
         self.remaining = (
             self.classes.query(
                 "v_gene != 'None' and precise_threshold < sensitive_threshold and pair_count > 0",
@@ -348,8 +345,7 @@ class HILARy:
     def to_do(
         self,
         df,
-        size_threshold: float = 50,
-        xy_complete: bool = False,
+        size_threshold: float = 500,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -361,40 +357,32 @@ class HILARy:
             Tuple[pd.DataFrame,pd.DataFrame]: Returns indices of small and big sensitive clusters.
         """
         df["to_resolve"] = False
-        if not self.remaining.empty:
+        if self.remaining.empty:
+            log.info("No classes passed to xy method.")
+        else:
             df["to_resolve"] = applyParallel(
                 [df.groupby(self.group).get_group(g) for g in self.remaining],
                 self.mark_class,
                 silent=True,
             )
             df.fillna(value={"to_resolve": False}, inplace=True)
-        if self.remaining.empty and not xy_complete:
-            log.info("No classes passed to xy method.")
-
-        if xy_complete:
-            df["to_resolve"] = True
-            dfGrouped = df.query("to_resolve == True").groupby(
-                self.group,
-            )
-        if not xy_complete:
-            dfGrouped = df.query("to_resolve == True").groupby(
-                self.group + ["sensitive_cluster"],
-            )
+        dfGrouped = df.query("to_resolve == True").groupby(
+            self.group + ["sensitive_cluster"],
+        )
         sizes = dfGrouped.size()
         mask = sizes > size_threshold
         large_to_do = sizes[mask].index
         small_to_do = sizes[~mask].index
         return df, small_to_do, large_to_do
 
-    def infer(self, df, xy_complete: bool = False) -> None:
+    def infer(self, df) -> None:
         """Infer family clusters.
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
         depending on whether the sensitive cluster is large or not.
         """
-        df, small_to_do, large_to_do = self.to_do(df, xy_complete=xy_complete)
+        df, small_to_do, large_to_do = self.to_do(df)
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
-
         log.info("Alignment length", alignment_length=self.alignment_length)
 
         if sum(df["to_resolve"]) == 0:
@@ -406,14 +394,8 @@ class HILARy:
                 ],
             )
             return
-        if xy_complete:
-            log.info("Running xy method on all VJL classes.")
-            dfGrouped = df.groupby(self.group)
-        else:
-            dfGrouped = df.groupby(self.group + ["sensitive_cluster"])
-        log.debug(
-            "Grouping precise clusters together to reach desired sensitivity.",
-        )
+
+        dfGrouped = df.groupby(self.group + ["sensitive_cluster"])
         log.debug("Inferring family clusters for small groups.")
         df["family_cluster"] = applyParallel(
             [(g, dfGrouped.get_group(g)) for g in small_to_do],
@@ -423,12 +405,7 @@ class HILARy:
         log.debug("Inferring family clusters for large groups.")
         large_dict = {}
         for g in large_to_do:
-            v_gene, j_gene, l, sensitive_cluster = g
-            xy_threshold_2 = self.classes.query(
-                "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
-            )["xy_threshold"].values[0]
-            if xy_threshold_2 == "None":
-                xy_threshold_2 = 0
+            _, _, l, _ = g
             dm = DistanceMatrix(
                 l=l,
                 alignment_length=self.alignment_length,
@@ -445,27 +422,20 @@ class HILARy:
             dct = self.singleLinkage(
                 indices=dfGrouped.get_group(g).index,
                 dist=d,
-                threshold=self.alignment_length,
+                threshold=self.alignment_length + self.xy_threshold,
             )
             large_dict.update(dct)
         df["new_index"] = df.index
-        df["new_family_cluster"] = df["new_index"].replace(large_dict)
-        df["family_cluster"] = df["family_cluster"].fillna(df.new_family_cluster)
+        df["family_cluster"] = df["family_cluster"].fillna(
+            df["new_index"].replace(large_dict)
+        )
         df.fillna(value={"family_cluster": 0}, inplace=True)
-        if xy_complete:
-            df["family"] = (
-                df.groupby(
-                    self.group + ["family_cluster"],
-                ).ngroup()
-                + 1
-            )
-        else:
-            df["family"] = (
-                df.groupby(
-                    self.group + ["sensitive_cluster", "family_cluster"],
-                ).ngroup()
-                + 1
-            )
+        df["family"] = (
+            df.groupby(
+                self.group + ["sensitive_cluster", "family_cluster"],
+            ).ngroup()
+            + 1
+        )
         df = df.drop(
             columns=[
                 "family_cluster",

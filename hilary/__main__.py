@@ -36,7 +36,7 @@ def main(
         help="Set logging verbosity level.",
     ),
     threads: int = typer.Option(
-        cpu_count(),
+        1,
         "--threads",
         "-t",
         help="Choose number of cpus on which to run code.",
@@ -52,12 +52,6 @@ def main(
         "--sensitivity",
         "-s",
         help="Choose desired sensitivity.",
-    ),
-    model: int = typer.Option(
-        326713,
-        "--model",
-        "-m",
-        help="Model name to infer Null distribution.",
     ),
     silent: bool = typer.Option(
         False,
@@ -90,9 +84,6 @@ def main(
         "--cdr3only",
         help="Use only the cdr3 method.",
     ),
-    xy_complete: bool = typer.Option(
-        False, "--xy-complete", help="Run xy method on all VJL classes."
-    ),
 ) -> None:
     """Infer lineages from data_path excel file."""
     if result_folder is None:
@@ -106,6 +97,8 @@ def main(
         raise ValueError(
             f"{output_path.as_posix()} already exists, use override parameter to replace the file.",
         )
+    if threads == -1:
+        threads = cpu_count()
 
     if verbose >= 2:  # noqa: PLR2004
         logging_level = logging.DEBUG
@@ -128,9 +121,6 @@ def main(
         ],
     )
     log = structlog.get_logger()
-    log.debug(
-        "📖 Full linkage ",
-    )
     log.info(
         "📖 READING DATA ",
         data_path=data_path.as_posix(),
@@ -168,7 +158,6 @@ def main(
         threads=threads,
         precision=precision,
         sensitivity=sensitivity,
-        model=model,
         silent=silent,
     )
     dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=dataframe_kappa)
@@ -224,9 +213,7 @@ def main(
         return
 
     log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD⏳.")
-    log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")
-    apriori.get_xy_thresholds(df=dataframe_cdr3)
-    dataframe_inferred = hilary.infer(df=dataframe_cdr3, xy_complete=xy_complete)
+    dataframe_inferred = hilary.infer(df=dataframe_cdr3)
 
     if logging_level == logging.DEBUG:
         output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
