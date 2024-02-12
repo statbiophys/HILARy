@@ -104,7 +104,7 @@ class DistanceMatrix:
         self.l = l
         self.L = alignment_length
         self.l_L = l / self.L
-        self.l_L_L = l / (l + self.L)
+        self.l_L_L = (l + self.L) / self.L
 
         self.data = df.values
         self.n = self.data.shape[0]
@@ -278,31 +278,44 @@ class HILARy:
         distanceMatrix = np.ones((dim, dim), dtype=float) * (2 * self.alignment_length)
         for i in range(dim):
             distanceMatrix[i, i] = 0
+            for j in range(i):
+                distance_list = []
+                for cdr31, s1, n1 in df.query("index==@i")[
+                    [
+                        "cdr3",
+                        "alt_sequence_alignment",
+                        "mutation_count",
+                    ]
+                ].values:
+                    for cdr32, s2, n2 in df.query("index==@j")[
+                        [
+                            "cdr3",
+                            "alt_sequence_alignment",
+                            "mutation_count",
+                        ]
+                    ].values:
+                        if n1 * n2 == 0:
+                            continue
+                        n = hamming(cdr31, cdr32)
+                        nL = hamming(s1, s2)
+                        n0 = (n1 + n2 - nL) / 2
 
-        for (cdr31, s1, n1, i1), (cdr32, s2, n2, i2) in combinations(
-            df[self.use].values,
-            2,
-        ):
-            if i1 == i2 or n1 * n2 == 0:
-                continue
-            n = hamming(cdr31, cdr32)
-            nL = hamming(s1, s2)
-            n0 = (n1 + n2 - nL) / 2
+                        exp_n = l / self.alignment_length * (nL + 1)
+                        std_n = np.sqrt(
+                            exp_n * (l + self.alignment_length) / self.alignment_length,
+                        )
 
-            exp_n = l / self.alignment_length * (nL + 1)
-            std_n = np.sqrt(
-                exp_n * (l + self.alignment_length) / self.alignment_length,
-            )
+                        exp_n0 = n1 * n2 / self.alignment_length
+                        std_n0 = np.sqrt(exp_n0)
 
-            exp_n0 = n1 * n2 / self.alignment_length
-            std_n0 = np.sqrt(exp_n0)
+                        x = (n - exp_n) / std_n
+                        y = (n0 - exp_n0) / std_n0
+                        distance = x - y + self.alignment_length
+                        distance_list.append(distance)
 
-            x = (n - exp_n) / std_n
-            y = (n0 - exp_n0) / std_n0
-            distance = x - y + self.alignment_length
-            distanceMatrix[i1, i2] = distance
-            distanceMatrix[i2, i1] = distance
-
+                distance = np.min(distance_list)
+                distanceMatrix[i, j] = distance
+                distanceMatrix[j, i] = distance
         sl = self.singleLinkage(
             indices,
             squareform(distanceMatrix),
@@ -335,7 +348,7 @@ class HILARy:
     def to_do(
         self,
         df,
-        size_threshold: float = 5,
+        size_threshold: float = 50,
         xy_complete: bool = False,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
@@ -408,6 +421,7 @@ class HILARy:
             silent=self.silent,
         )
         log.debug("Inferring family clusters for large groups.")
+        large_dict = {}
         for g in large_to_do:
             v_gene, j_gene, l, sensitive_cluster = g
             xy_threshold_2 = self.classes.query(
@@ -427,16 +441,16 @@ class HILARy:
                     ]
                 ],
             )
-
             d = dm.compute()
-            print(dm)
             dct = self.singleLinkage(
-                dfGrouped.get_group(g).index,
-                d,
-                self.alignment_length - xy_threshold_2 + 150,
+                indices=dfGrouped.get_group(g).index,
+                dist=d,
+                threshold=self.alignment_length,
             )
-            df["family_cluster"] = df.index.map(dct)
-
+            large_dict.update(dct)
+        df["new_index"] = df.index
+        df["new_family_cluster"] = df["new_index"].replace(large_dict)
+        df["family_cluster"] = df["family_cluster"].fillna(df.new_family_cluster)
         df.fillna(value={"family_cluster": 0}, inplace=True)
         if xy_complete:
             df["family"] = (

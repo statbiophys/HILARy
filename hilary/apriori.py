@@ -251,17 +251,6 @@ class Apriori:
 
     def get_xy_thresholds(self, df):
         alignment_length = len(df["alt_sequence_alignment"].values[0])
-        """self.classes["xy_threshold"] = self.classes.apply(
-            lambda x: self.simulate_xs_ys(
-                x.v_gene,
-                x.j_gene,
-                x.cdr3_length,
-                x.effective_prevalence,
-                df,
-                alignment_length,
-            ),
-            axis=1,
-        )"""
         mutations_grouped = []
         for (v_gene, j_gene, cdr3_length, prevalence), _ in self.classes.groupby(
             ["v_gene", "j_gene", "cdr3_length", "effective_prevalence"]
