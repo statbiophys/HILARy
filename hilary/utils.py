@@ -1,4 +1,5 @@
-"Code to process data and fit model parameters."
+"""Code to process data and fit model parameters."""
+
 from __future__ import annotations
 
 import json
@@ -15,13 +16,14 @@ from tqdm import tqdm
 
 log = structlog.get_logger(__name__)
 
+# pylint: disable=invalid-name
+
 
 def applyParallel(
     dfGrouped: list,
     func: Callable,
     cpuCount: int = cpu_count(),
     silent=False,
-    isint=False,
 ) -> pd.DataFrame:
     """Parallely runs func on each group of dfGrouped.
 
@@ -38,9 +40,7 @@ def applyParallel(
         ret_list = list(
             tqdm(p.imap(func, dfGrouped), total=len(dfGrouped), disable=silent),
         )
-    if isint:
-        return ret_list
-    if len(ret_list) == 0:
+    if not ret_list:
         return pd.DataFrame()
     return pd.concat(ret_list)
 
@@ -65,7 +65,7 @@ def preprocess(
     dataframe: pd.DataFrame,
     silent: bool = False,
 ) -> pd.DataFrame:
-    """Processes input dataframe.
+    """Process input dataframe.
 
     Args:
         dataframe (pd.DataFrame): Input dataframe of sequences.
@@ -105,12 +105,8 @@ def preprocess(
         df["cdr3"] = df["junction"].str[3:-3]
     df["cdr3_length"] = df["cdr3"].str.len()
 
-    df["alt_sequence_alignment"] = (
-        df["v_sequence_alignment"] + df["j_sequence_alignment"]
-    )
-    df["alt_germline_alignment"] = (
-        df["v_germline_alignment"] + df["j_germline_alignment"]
-    )
+    df["alt_sequence_alignment"] = df["v_sequence_alignment"] + df["j_sequence_alignment"]
+    df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
 
     df["mutation_count"] = applyParallel(
         df.groupby(["v_gene", "j_gene", "cdr3_length"]),
@@ -130,18 +126,10 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
         pd.DataFrame: Dataframe with classes.
     """
     classes = (
-        df.groupby(["v_gene", "j_gene", "cdr3_length"])
-        .size()
-        .to_frame("sequence_count")
+        df.groupby(["v_gene", "j_gene", "cdr3_length"]).size().to_frame("sequence_count")
     ).reset_index()
-    classes["pair_count"] = (
-        classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
-    )
-    l_classes = (
-        classes.groupby("cdr3_length")[["sequence_count", "pair_count"]]
-        .sum()
-        .reset_index()
-    )
+    classes["pair_count"] = classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
+    l_classes = classes.groupby("cdr3_length")[["sequence_count", "pair_count"]].sum().reset_index()
     l_classes["v_gene"] = "None"
     l_classes["j_gene"] = "None"
     classes = pd.concat([classes, l_classes], ignore_index=True).sort_values(
@@ -179,6 +167,7 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
 
     Args:
         input_path (Path):Path of input file.
+        config (Path): Json configuration file to change column names of your custom sequence file.
 
     Raises:
         ValueError: Format of input file is not supported.
@@ -226,17 +215,13 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
     TP = 0
     P = binom(df.groupby(["clone_id"]).size(), 2).sum()
     TP_FP = binom(df.groupby([partition]).size(), 2).sum()
-    for i, family in tqdm(df.groupby(["clone_id"]), disable=True):
+    for _, family in tqdm(df.groupby(["clone_id"]), disable=True):
         for r1, r2 in combinations(family[partition], 2):
             if r1 == r2:
                 TP += 1
 
-    if TP_FP == 0 and P > 0:
+    if not TP_FP and P > 0:
         return 0, 1.0
-    elif P == 0:
+    if not P:
         return None, None
     return TP / TP_FP, TP / P  # precision, sensitivity
-
-
-def pRequired(rho, pi=0.99):
-    return rho / (1 + 1e-5 - rho) * (1 - pi) / pi

@@ -1,6 +1,7 @@
+"""Infer clonal families."""
+
 from __future__ import annotations
 
-from itertools import combinations
 from multiprocessing import Pool, cpu_count
 
 import numpy as np
@@ -14,7 +15,7 @@ from textdistance import hamming
 from hilary.apriori import Apriori
 from hilary.utils import applyParallel
 
-# from atriegc import Trie
+# pylint: disable=invalid-name
 
 log = structlog.get_logger()
 
@@ -31,7 +32,7 @@ class CDR3Clustering:
         self.thresholds = thresholds
 
     def cluster(self, args: tuple[tuple[str, str, int], pd.DataFrame]) -> pd.Series:
-        """Returns cluster labels depending of thresholds in self.thresholds
+        """Return cluster labels depending of thresholds in self.thresholds.
 
         Args:
             args (Tuple[Tuple[str, str, int], pd.DataFrame]): (Vgene,Jgene,l), Dataframe
@@ -60,7 +61,8 @@ class CDR3Clustering:
         group: list[str] = ["v_gene", "j_gene", "cdr3_length"],
         silent: bool = False,
     ) -> pd.Series:
-        """Returns cluster labels depending of thresholds in self.thresholds.
+        """Return cluster labels depending of thresholds in self.thresholds.
+
         Runs self.cluster parallely on dataframe grouped by 'group' argument.
 
         Args:
@@ -96,6 +98,7 @@ class DistanceMatrix:
 
         Args:
             l (int): CDR3 length
+            align_length (int): Length of the Vgene + Jgene.
             df (pd.DataFrame): Dataframe of sequences grouped by (v,j,l,sensitive cluster)
             threads (int, optional): Number of cpus on which to run code. Defaults to cpu_count()-1.
         """
@@ -129,7 +132,7 @@ class DistanceMatrix:
         cdr32, s2, n2, i2 = arg2
         if i1 == i2:
             return -self.L
-        if n1 * n2 == 0:
+        if not n1 * n2:
             return self.L
         n = hamming(cdr31, cdr32)
         nL = hamming(s1, s2)
@@ -146,7 +149,7 @@ class DistanceMatrix:
         return x - y
 
     def proc(self, start: int) -> tuple[int, int, list[float]]:
-        """Compute 1D distance matrix between start and start+self.k_step
+        """Compute 1D distance matrix between start and start+self.k_step.
 
         Args:
             start (int): Index from which to compute distances.
@@ -160,16 +163,10 @@ class DistanceMatrix:
         for k in range(k1, k2):
             # get (i, j) for 2D distance matrix knowing (k) for 1D distance matrix
             i = int(
-                self.n
-                - 2
-                - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
+                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
             )
             j = int(
-                k
-                + i
-                + 1
-                - self.n * (self.n - 1) / 2
-                + (self.n - i) * ((self.n - i) - 1) / 2,
+                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2,
             )
             # store distance
             a = self.data[i, :]
@@ -195,15 +192,15 @@ class DistanceMatrix:
 
 
 class HILARy:
-    """Infer families using CDR3 and mutation information"""
+    """Infer families using CDR3 and mutation information."""
 
     def __init__(self, apriori: Apriori, xy_threshold: int = 0):
         """Initialize Hilary attributes using Apriori object.
 
         Args:
             apriori (Apriori): Apriori object containing histograms and thresholds.
+            xy_threshold (int):Threshold to use for the xy method.
         """
-
         self.group = ["v_gene", "j_gene", "cdr3_length"]
         self.classes = apriori.classes
         self.use = [
@@ -212,7 +209,7 @@ class HILARy:
             "mutation_count",
             "index",
         ]
-        self.alignment_length = None
+        self.alignment_length = 0
         self.xy_threshold = xy_threshold
         self.remaining = (
             self.classes.query(
@@ -232,8 +229,7 @@ class HILARy:
         dist: np.ndarray,
         threshold: float,
     ) -> dict[int, int]:
-        """Maps precise clusters to new precise AND sensitive clusters by merging clusters together.
-
+        """Map precise clusters to new precise AND sensitive clusters by merging clusters together.
 
         Args:
             indices (np.array): Indices of precise clusters.
@@ -241,14 +237,14 @@ class HILARy:
             threshold (float): Threshold to merge two precise clusters if the distance is smaller.
 
         Returns:
-            dict: _description_
+            dict: Dictionary mapping precise clusters to their new clusters.
         """
         clusters = fcluster(
             linkage(dist, method="single"),
             criterion="distance",
             t=threshold,
         )
-        return {i: c for i, c in zip(indices, clusters)}
+        return dict(zip(indices, clusters))
 
     def class2pairs(
         self,
@@ -320,8 +316,12 @@ class HILARy:
         )
         return df["precise_cluster"].map(sl)
 
-    def compute_prec_sens_clusters(self, df) -> None:
-        """Infer precise and sensitive clusters."""
+    def compute_prec_sens_clusters(self, df: pd.DataFrame) -> None:
+        """Infer precise and sensitive clusters.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+        """
         prec = CDR3Clustering(self.classes[self.group + ["precise_threshold"]])
         sens = CDR3Clustering(
             self.classes[self.group + ["sensitive_threshold"]],
@@ -345,12 +345,13 @@ class HILARy:
     def to_do(
         self,
         df,
-        size_threshold: float = 500,
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        size_threshold: int = 1000,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
         Args:
-            size_threshold (float, optional): Threshold to separate big and small clusters.
+            df(pd.DataFrame):Dataframe of sequences.
+            size_threshold (int, optional): Threshold to separate big and small clusters.
             Defaults to 1e3.
 
         Returns:
@@ -377,15 +378,20 @@ class HILARy:
 
     def infer(self, df) -> None:
         """Infer family clusters.
+
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
         clusters together with a single linkage algorithm. This grouping is done differently
-        depending on whether the sensitive cluster is large or not.
+        depending on whether the sensitive cluster is large or not to use parallelization in the
+        most efficient way possible.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
         """
         df, small_to_do, large_to_do = self.to_do(df)
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
-        log.info("Alignment length", alignment_length=self.alignment_length)
+        log.debug("Checking alignment length.", alignment_length=self.alignment_length)
 
-        if sum(df["to_resolve"]) == 0:
+        if not sum(df["to_resolve"]):
             log.info("Returning cdr3 method precise clusters.")
             df["family"] = df["precise_cluster"]
             df = df.drop(
@@ -393,7 +399,7 @@ class HILARy:
                     "cluster",
                 ],
             )
-            return
+            return df
 
         dfGrouped = df.groupby(self.group + ["sensitive_cluster"])
         log.debug("Inferring family clusters for small groups.")
@@ -426,9 +432,7 @@ class HILARy:
             )
             large_dict.update(dct)
         df["new_index"] = df.index
-        df["family_cluster"] = df["family_cluster"].fillna(
-            df["new_index"].replace(large_dict)
-        )
+        df["family_cluster"] = df["family_cluster"].fillna(df["new_index"].replace(large_dict))
         df.fillna(value={"family_cluster": 0}, inplace=True)
         df["family"] = (
             df.groupby(
