@@ -1,3 +1,5 @@
+"""Execute hilary with command line."""
+
 from __future__ import annotations
 
 import logging
@@ -7,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import structlog
 import typer
-from scipy.special import binom
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
@@ -39,7 +40,7 @@ def main(
         1,
         "--threads",
         "-t",
-        help="Choose number of cpus on which to run code.",
+        help="Choose number of cpus on which to run code. -1 to use all available cpus.",
     ),
     precision: float = typer.Option(
         1,
@@ -133,9 +134,7 @@ def main(
     if kappa_file:
         log.info("USING PAIRED OPTION.")
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
-        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip(
-            "-igk"
-        )
+        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
         dataframe_kappa.set_index("sequence_id")
         lengths = np.arange(57, 144 + 3, 3).astype(int)
         xy_threshold = 4
@@ -233,9 +232,7 @@ def main(
 
     if dataframe_kappa is not None:
         dataframe_kappa["family"] = dataframe_inferred["family"]
-        dataframe_kappa["cdr3_only_method_clustering"] = dataframe_inferred[
-            "precise_cluster"
-        ]
+        dataframe_kappa["cdr3_only_method_clustering"] = dataframe_inferred["precise_cluster"]
         dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"] + "-igk"
         output_path_kappa = result_folder / Path(f"inferred_{kappa_file.name}")
 
@@ -246,9 +243,7 @@ def main(
         save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
 
     if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
-        precision_full, sensitivity_full = pairwise_evaluation(
-            df=dataframe, partition="family"
-        )
+        precision_full, sensitivity_full = pairwise_evaluation(df=dataframe, partition="family")
         dataframe_inferred["clone_id"] = dataframe["clone_id"]
         precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
             df=dataframe_inferred, partition="precise_cluster"
