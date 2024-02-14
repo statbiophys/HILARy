@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from itertools import combinations
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 from pathlib import Path
 from typing import Callable
 
@@ -22,7 +22,7 @@ log = structlog.get_logger(__name__)
 def applyParallel(
     dfGrouped: list,
     func: Callable,
-    cpuCount: int = cpu_count(),
+    cpuCount: int = 1,
     silent=False,
 ) -> pd.DataFrame:
     """Parallely runs func on each group of dfGrouped.
@@ -30,7 +30,7 @@ def applyParallel(
     Args:
         dfGrouped (list): Func runs parallely on each element of the list dfGrouped
         func (Callable): Function to run on dfGrouped
-        cpuCount (int, optional): Number of cpus to use. Defaults cpu_count() the maximum possible.
+        cpuCount (int, optional): Number of cpus to use. Defaults to 1.
         silent (bool): if true do not show progress bars.
 
     Returns:
@@ -64,12 +64,14 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
 def preprocess(
     dataframe: pd.DataFrame,
     silent: bool = False,
+    threads: int = 1,
 ) -> pd.DataFrame:
     """Process input dataframe.
 
     Args:
         dataframe (pd.DataFrame): Input dataframe of sequences.
         silent (bool, optional): Do not show progress bar if true. Defaults to False.
+        threads (int, optional): Number of cpus on which to run code, defaults to 1.
 
     Returns:
         pd.Dataframe: processed dataframe.
@@ -112,6 +114,7 @@ def preprocess(
         df.groupby(["v_gene", "j_gene", "cdr3_length"]),
         count_mutations,
         silent=silent,
+        cpuCount=threads,
     )
     return df[usecols].astype({"cdr3_length": int})
 

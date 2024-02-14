@@ -30,7 +30,7 @@ class Apriori:
         nmax: int = int(1e5),
         precision: float = 1.0,
         sensitivity: float = 1.0,
-        threads: int = cpu_count() - 1,
+        threads: int = 1,
         model: int = 326713,
         silent: bool = False,
         paired: bool = False,
@@ -44,14 +44,15 @@ class Apriori:
                 classes larger than nmax. Defaults to 100000.
             precision (float, optional): Desired precision, defaults to 1.
             sensitivity (float, optional): Desired sensitivity, defaults to 1.
-            threads (int, optional): Number of cpus on which to run code, defaults to cpu_count().
+            threads (int, optional): Number of cpus on which to run code, defaults to 1. -1 to use
+            all available cpus.
             model (int, optional): Model name to infer Null distribution, defaults to 326713.
             silent (bool) : If true do not to show progress bars.
             paired (bool) : If true use null distributions over paired chain sequences.
         """
         self.lengths = lengths
         self.nmax = nmax
-        self.threads = threads
+        self.threads = threads if threads > 0 else cpu_count()
         self.threads = threads
         self.precision = precision - 1e-4
         self.sensitivity = sensitivity
