@@ -166,10 +166,16 @@ class DistanceMatrix:
         for k in range(k1, k2):
             # get (i, j) for 2D distance matrix knowing (k) for 1D distance matrix
             i = int(
-                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
+                self.n
+                - 2
+                - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
             )
             j = int(
-                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2,
+                k
+                + i
+                + 1
+                - self.n * (self.n - 1) / 2
+                + (self.n - i) * ((self.n - i) - 1) / 2,
             )
             # store distance
             a = self.data[i, :]
@@ -446,7 +452,9 @@ class HILARy:
             )
             large_dict.update(dct)
         df["new_index"] = df.index
-        df["family_cluster"] = df["family_cluster"].fillna(df["new_index"].replace(large_dict))
+        df["family_cluster"] = df["family_cluster"].fillna(
+            df["new_index"].map(large_dict)
+        )
         df.fillna(value={"family_cluster": 0}, inplace=True)
         df["family"] = (
             df.groupby(
