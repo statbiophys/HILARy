@@ -24,11 +24,11 @@ class Compatible:
     ):
         dirname = os.path.dirname(__file__)
         if filename_v is None:
-            self.filename_v = dirname + "/data/human_genes/IGHV.fasta"
+            self.filename_v = dirname + "/human_genes/IGHV.fasta"
         else:
             self.filename_v = filename_v
         if filename_j is None:
-            self.filename_j = dirname + "/data/human_genes/IGHJ.fasta"
+            self.filename_j = dirname + "/human_genes/IGHJ.fasta"
         else:
             self.filename_j = filename_j
 

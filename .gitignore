@@ -140,3 +140,6 @@ my_pip_package.egg-info/
 ./dist/
 
 *.tsv
+*.gz
+*logs.json
+*debug*

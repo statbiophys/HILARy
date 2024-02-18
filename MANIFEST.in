@@ -22,3 +22,8 @@ prune data
 prune benchmark_data
 prune .ruff_cache
 prune doc
+prune benchmark_partis
+prune human_genes
+prune scripts
+prune benchmark
+prune build
