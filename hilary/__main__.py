@@ -127,6 +127,9 @@ def main(
         data_path=data_path.as_posix(),
     )
     dataframe = read_input(input_path=data_path, config=config)
+    if "sequence_id" not in dataframe.columns:
+        log.warning("No 'sequence_id' column present in file.")
+        dataframe["sequence_id"] = dataframe.index.astype("str")
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
 
@@ -134,7 +137,9 @@ def main(
     if kappa_file:
         log.info("USING PAIRED OPTION.")
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
-        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
+        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip(
+            "-igk"
+        )
         dataframe_kappa.set_index("sequence_id")
         lengths = np.arange(57, 144 + 3, 3).astype(int)
         xy_threshold = 4
@@ -232,7 +237,9 @@ def main(
 
     if dataframe_kappa is not None:
         dataframe_kappa["family"] = dataframe_inferred["family"]
-        dataframe_kappa["cdr3_only_method_clustering"] = dataframe_inferred["precise_cluster"]
+        dataframe_kappa["cdr3_only_method_clustering"] = dataframe_inferred[
+            "precise_cluster"
+        ]
         dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"] + "-igk"
         output_path_kappa = result_folder / Path(f"inferred_{kappa_file.name}")
 
@@ -243,7 +250,9 @@ def main(
         save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
 
     if logging_level == logging.DEBUG and "clone_id" in dataframe.columns:
-        precision_full, sensitivity_full = pairwise_evaluation(df=dataframe, partition="family")
+        precision_full, sensitivity_full = pairwise_evaluation(
+            df=dataframe, partition="family"
+        )
         dataframe_inferred["clone_id"] = dataframe["clone_id"]
         precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
             df=dataframe_inferred, partition="precise_cluster"

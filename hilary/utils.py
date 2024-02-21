@@ -76,19 +76,7 @@ def preprocess(
     Returns:
         pd.Dataframe: processed dataframe.
     """
-    df = dataframe.copy()[
-        [
-            "sequence_id",
-            "v_call",
-            "j_call",
-            "junction",
-            "v_sequence_alignment",
-            "j_sequence_alignment",
-            "v_germline_alignment",
-            "j_germline_alignment",
-        ]
-    ]
-    df = df.dropna()
+    df = dataframe.copy()
     usecols = [
         "sequence_id",
         "v_gene",
@@ -106,17 +94,21 @@ def preprocess(
     if "cdr3" not in df.columns:
         df["cdr3"] = df["junction"].str[3:-3]
     df["cdr3_length"] = df["cdr3"].str.len()
-
-    df["alt_sequence_alignment"] = df["v_sequence_alignment"] + df["j_sequence_alignment"]
-    df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
-
+    if "alt_sequence_alignment" not in df.columns:
+        df["alt_sequence_alignment"] = (
+            df["v_sequence_alignment"] + df["j_sequence_alignment"]
+        )
+    if "alt_germline_alignment" not in df.columns:
+        df["alt_germline_alignment"] = (
+            df["v_germline_alignment"] + df["j_germline_alignment"]
+        )
     df["mutation_count"] = applyParallel(
         df.groupby(["v_gene", "j_gene", "cdr3_length"]),
         count_mutations,
         silent=silent,
         cpuCount=threads,
     )
-    return df[usecols].astype({"cdr3_length": int})
+    return df[usecols].astype({"cdr3_length": int}).dropna()
 
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
@@ -129,10 +121,18 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
         pd.DataFrame: Dataframe with classes.
     """
     classes = (
-        df.groupby(["v_gene", "j_gene", "cdr3_length"]).size().to_frame("sequence_count")
+        df.groupby(["v_gene", "j_gene", "cdr3_length"])
+        .size()
+        .to_frame("sequence_count")
     ).reset_index()
-    classes["pair_count"] = classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
-    l_classes = classes.groupby("cdr3_length")[["sequence_count", "pair_count"]].sum().reset_index()
+    classes["pair_count"] = (
+        classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
+    )
+    l_classes = (
+        classes.groupby("cdr3_length")[["sequence_count", "pair_count"]]
+        .sum()
+        .reset_index()
+    )
     l_classes["v_gene"] = "None"
     l_classes["j_gene"] = "None"
     classes = pd.concat([classes, l_classes], ignore_index=True).sort_values(
@@ -161,6 +161,11 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
         dataframe.to_csv(save_path, sep="\t")
     elif suffix == ".csv":
         dataframe.to_csv(save_path)
+    if suffix == ".gz":
+        if ".csv" in save_path.suffixes:
+            dataframe.to_csv(
+                save_path.with_suffix(""),
+            )
     else:
         raise ValueError(f"Format {suffix} not supported.")
 
@@ -181,18 +186,23 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
     suffix = input_path.suffix
     if suffix == ".xlsx":
         dataframe = pd.read_excel(input_path)
-    elif suffix == ".tsv":
+    if suffix == ".tsv":
         dataframe = pd.read_csv(
             input_path,
             sep="\t",
         )
-    elif suffix == ".csv":
+    if suffix == ".csv":
         dataframe = pd.read_csv(
             input_path,
         )
+    if suffix == ".gz":
+        if ".csv" in input_path.suffixes:
+            dataframe = pd.read_csv(
+                input_path,
+            )
     else:
         raise ValueError(
-            f"Format {suffix} not supported. Extensions supported are tsv, xlsx.",
+            f"Format {suffix} not supported. Extensions supported are tsv, xlsx, csv, csv.gz",
         )
     if config:
         with open(config, encoding="utf-8") as user_file:
