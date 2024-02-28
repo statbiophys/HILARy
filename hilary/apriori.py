@@ -14,7 +14,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, preprocess
+from hilary.utils import applyParallel, preprocess, pRequired
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -273,3 +273,80 @@ class Apriori:
             cpuCount=self.threads,
             silent=self.silent,
         )
+
+    def simulate_xs_ys(
+        self,
+        args,
+    ):
+        size = int(1e6)
+        (v_gene, j_gene, l, prevalence, mutations, alignment_length, class_id) = args
+        if l not in self.lengths:
+            return
+        if v_gene == "None":
+            return (0, class_id)
+        bins = np.arange(np.max(mutations) + 1)
+        pni, nis = np.histogram(mutations, bins=bins)
+        p = pni[1:] / sum(pni[1:])
+        if len(nis) < 3:
+            return (0, class_id)
+        n1s = np.random.choice(nis[1:-1], size=size, replace=True, p=p)
+        n2s = np.random.choice(nis[1:-1], size=size, replace=True, p=p)
+        exp_n0 = n1s * n2s / alignment_length
+        n0s = np.random.poisson(lam=exp_n0, size=size)
+        std_n0 = np.sqrt(exp_n0)
+        ys = (n0s - exp_n0) / std_n0
+
+        cdf = self.cdfs.loc[self.cdfs["l"] == l].values[0, 1 : l + 1]
+        pn = np.diff(cdf, prepend=[0], append=[1])
+        ns = np.random.choice(
+            np.arange(l + 1), size=size, replace=True, p=pn / pn.sum()
+        )
+        nLs = n1s + n2s - 2 * n0s
+        exp_n = (l / alignment_length) * (nLs + 1)
+        std_n = np.sqrt(exp_n * (l + alignment_length) / alignment_length)
+        xs = (ns - exp_n) / std_n
+        zs = xs - ys
+        return (
+            np.sort(zs)[min(int(size * pRequired(prevalence)), size - 1)],
+            class_id,
+        )
+
+    def get_xy_thresholds(self, df):
+        alignment_length = len(df["alt_sequence_alignment"].values[0])
+        mutations_grouped = []
+        for (
+            v_gene,
+            j_gene,
+            cdr3_length,
+            prevalence,
+            class_id,
+        ) in self.classes[
+            ["v_gene", "j_gene", "cdr3_length", "effective_prevalence", "class_id"]
+        ].values:
+            mutations_grouped.append(
+                (
+                    v_gene,
+                    j_gene,
+                    cdr3_length,
+                    prevalence,
+                    df.query(
+                        "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
+                    )["mutation_count"],
+                    alignment_length,
+                    class_id,
+                )
+            )
+
+        result = applyParallel(
+            mutations_grouped,
+            self.simulate_xs_ys,
+            cpuCount=self.threads,
+            silent=self.silent,
+            isint=True,
+        )
+
+        thresholds_data = pd.DataFrame(
+            result, columns=["xy_threshold", "class_id"]
+        ).set_index("class_id")
+
+        self.classes["xy_threshold"] = thresholds_data["xy_threshold"]

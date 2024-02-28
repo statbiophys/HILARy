@@ -132,7 +132,7 @@ def main(
         dataframe["sequence_id"] = dataframe.index.astype("str")
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
-
+    dataframe["clone_id"] = dataframe["FAMILY"]
     paired = False
     if kappa_file:
         log.info("USING PAIRED OPTION.")
@@ -195,16 +195,7 @@ def main(
 
     log.info("⏳ COMPUTING THRESHOLDS ⏳.")
     apriori.get_thresholds()
-
-    if logging_level == logging.DEBUG:
-        parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
-        log.debug(
-            "Saving all parameters inferred by Hilary.",
-            path=parameters_path.as_posix(),
-        )
-        save_dataframe(apriori.classes, parameters_path)
-
-    hilary = HILARy(apriori, xy_threshold=xy_threshold)
+    hilary = HILARy(apriori, df=dataframe_processed, xy_threshold=xy_threshold)
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
 
     dataframe_cdr3 = hilary.compute_prec_sens_clusters(dataframe_processed)
@@ -217,8 +208,16 @@ def main(
         return
 
     log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD⏳.")
+    log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")
+    apriori.get_xy_thresholds(df=dataframe_cdr3)
     dataframe_inferred = hilary.infer(df=dataframe_cdr3)
-
+    if logging_level == logging.DEBUG:
+        parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
+        log.debug(
+            "Saving all parameters inferred by Hilary.",
+            path=parameters_path.as_posix(),
+        )
+        save_dataframe(apriori.classes, parameters_path)
     if logging_level == logging.DEBUG:
         output_path = debug_folder / Path(f"preprocessed_output_{data_path.name}")
         log.debug(

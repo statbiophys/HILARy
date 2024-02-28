@@ -24,6 +24,7 @@ def applyParallel(
     func: Callable,
     cpuCount: int = 1,
     silent=False,
+    isint=False,
 ) -> pd.DataFrame:
     """Parallely runs func on each group of dfGrouped.
 
@@ -40,6 +41,8 @@ def applyParallel(
         ret_list = list(
             tqdm(p.imap(func, dfGrouped), total=len(dfGrouped), disable=silent),
         )
+    if isint:
+        return ret_list
     if not ret_list:
         return pd.DataFrame()
     return pd.concat(ret_list)
@@ -98,10 +101,12 @@ def preprocess(
         df["alt_sequence_alignment"] = (
             df["v_sequence_alignment"] + df["j_sequence_alignment"]
         )
+
     if "alt_germline_alignment" not in df.columns:
         df["alt_germline_alignment"] = (
             df["v_germline_alignment"] + df["j_germline_alignment"]
         )
+
     df["mutation_count"] = applyParallel(
         df.groupby(["v_gene", "j_gene", "cdr3_length"]),
         count_mutations,
@@ -161,7 +166,7 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
         dataframe.to_csv(save_path, sep="\t")
     elif suffix == ".csv":
         dataframe.to_csv(save_path)
-    if suffix == ".gz":
+    elif suffix == ".gz":
         if ".csv" in save_path.suffixes:
             dataframe.to_csv(
                 save_path.with_suffix(""),
@@ -186,16 +191,16 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
     suffix = input_path.suffix
     if suffix == ".xlsx":
         dataframe = pd.read_excel(input_path)
-    if suffix == ".tsv":
+    elif suffix == ".tsv":
         dataframe = pd.read_csv(
             input_path,
             sep="\t",
         )
-    if suffix == ".csv":
+    elif suffix == ".csv":
         dataframe = pd.read_csv(
             input_path,
         )
-    if suffix == ".gz":
+    elif suffix == ".gz":
         if ".csv" in input_path.suffixes:
             dataframe = pd.read_csv(
                 input_path,
@@ -238,3 +243,7 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
     if not P:
         return None, None
     return TP / TP_FP, TP / P  # precision, sensitivity
+
+
+def pRequired(rho, pi=0.95):
+    return rho / (1 + 1e-5 - rho) * (1 - pi) / pi
