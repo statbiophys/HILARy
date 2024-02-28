@@ -248,7 +248,7 @@ class Null:
         cdf = cdfs.loc[cdfs["l"] == l].values[0, 1 : l + 1]
         return np.diff(cdf, prepend=[0], append=[1])
 
-    def pRequired(self, prevalence, precision=0.98):
+    def pRequired(self, prevalence, precision=0.99):
         return prevalence / (1 - prevalence) * (1 - precision) / precision
 
     def get_threshold(self, l, rho):
@@ -372,8 +372,8 @@ class HILARy:
                     x = (n - exp_n) / std_n
                     y = (n0 - exp_n0) / std_n0
                     distance = x - y + self.alignment_length
-                    distanceMatrix[i1, i2] = distance
-                    distanceMatrix[i2, i1] = distance
+                    distanceMatrix[i1, i2] = min(distance, distanceMatrix[i1, i2])
+                    distanceMatrix[i2, i1] = min(distance, distanceMatrix[i2, i1])
         sl = self.singleLinkage(
             indices,
             squareform(distanceMatrix),
@@ -532,5 +532,4 @@ class HILARy:
                 "family_cluster",
             ],
         )
-        print("MDRRRRRRRRRRRRRRRRRRRR")
         return df

@@ -301,7 +301,7 @@ class Apriori:
         ns = np.random.choice(
             np.arange(l + 1), size=size, replace=True, p=pn / pn.sum()
         )
-        nLs = n1s + n2s - 2 * n0s
+        nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
         exp_n = (l / alignment_length) * (nLs + 1)
         std_n = np.sqrt(exp_n * (l + alignment_length) / alignment_length)
         xs = (ns - exp_n) / std_n
