@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from itertools import combinations
 from multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
 import structlog
 from atriegc import TrieNucl as Trie
+from numpy import random
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from textdistance import hamming
@@ -203,7 +205,7 @@ class DistanceMatrix:
 class HILARy:
     """Infer families using CDR3 and mutation information."""
 
-    def __init__(self, apriori: Apriori, xy_threshold: int = 0):
+    def __init__(self, apriori: Apriori, df, xy_threshold: int = 0):
         """Initialize Hilary attributes using Apriori object.
 
         Args:
@@ -218,7 +220,7 @@ class HILARy:
             "mutation_count",
             "index",
         ]
-        self.alignment_length = 0
+        self.alignment_length = len(df["alt_sequence_alignment"].values[0])
         self.xy_threshold = xy_threshold
         self.remaining = (
             self.classes.query(
@@ -270,7 +272,10 @@ class HILARy:
             pd.Series: New clusters made of grouped precise clusters.
         """
         df = args[1]  # (vgene, jgene, cdr3length, sensitive cluster), df
-        l = args[0][2]
+        v_gene, j_gene, l, _ = args[0]
+        xy_threshold_2 = self.classes.query(
+            "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
+        )["xy_threshold"].values[0]
         indices = np.unique(df["precise_cluster"])
         if len(indices) <= 1:
             return df["precise_cluster"]
@@ -281,46 +286,35 @@ class HILARy:
         distanceMatrix = np.ones((dim, dim), dtype=float) * (2 * self.alignment_length)
         for i in range(dim):
             distanceMatrix[i, i] = 0
-            for j in range(i):
-                distance_min = 2 * self.alignment_length
-                for cdr31, s1, n1 in df.query("index==@i")[
-                    [
-                        "cdr3",
-                        "alt_sequence_alignment",
-                        "mutation_count",
-                    ]
-                ].values:
-                    for cdr32, s2, n2 in df.query("index==@j")[
-                        [
-                            "cdr3",
-                            "alt_sequence_alignment",
-                            "mutation_count",
-                        ]
-                    ].values:
-                        if not n1 * n2:
-                            continue
-                        n = hamming(cdr31, cdr32)
-                        nL = hamming(s1, s2)
-                        n0 = (n1 + n2 - nL) / 2
+        for (cdr31, s1, n1, i1), (cdr32, s2, n2, i2) in combinations(
+            df[self.use].values, 2
+        ):
+            if i1 != i2:
+                n1n2 = n1 * n2
+                if n1n2 > 0:
+                    n = hamming(cdr31, cdr32)
+                    nL = hamming(s1, s2)
+                    n0 = (n1 + n2 - nL) / 2
 
-                        exp_n = l / self.alignment_length * (nL + 1)
-                        std_n = np.sqrt(
-                            exp_n * (l + self.alignment_length) / self.alignment_length,
-                        )
+                    exp_n = l / self.alignment_length * (nL + 1)
+                    std_n = np.sqrt(
+                        exp_n * (l + self.alignment_length) / self.alignment_length
+                    )
 
-                        exp_n0 = n1 * n2 / self.alignment_length
-                        std_n0 = np.sqrt(exp_n0)
+                    exp_n0 = n1n2 / self.alignment_length
+                    std_n0 = np.sqrt(exp_n0)
 
-                        x = (n - exp_n) / std_n
-                        y = (n0 - exp_n0) / std_n0
-                        distance = x - y + self.alignment_length
-                        distance_min = min(distance, distance_min)
-                distanceMatrix[i, j] = distance_min
-                distanceMatrix[j, i] = distance_min
+                    x = (n - exp_n) / std_n
+                    y = (n0 - exp_n0) / std_n0
+                    distance = x - y + self.alignment_length
+                    distanceMatrix[i1, i2] = min(distance, distanceMatrix[i1, i2])
+                    distanceMatrix[i2, i1] = min(distance, distanceMatrix[i2, i1])
         sl = self.singleLinkage(
             indices,
             squareform(distanceMatrix),
-            threshold=self.alignment_length + self.xy_threshold,
+            threshold=self.alignment_length
+            + self.xy_threshold
+            + xy_threshold_2,  # replace xy_threshold_2 by self.x0 for natanael"s method
         )
         return df["precise_cluster"].map(sl)
 
@@ -359,7 +353,7 @@ class HILARy:
     def to_do(
         self,
         df,
-        size_threshold: int = 1000,
+        size_threshold: int = 10000,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -408,7 +402,6 @@ class HILARy:
         df, small_to_do, large_to_do = self.to_do(df)
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
         log.debug("Checking alignment length.", alignment_length=self.alignment_length)
-
         if not sum(df["to_resolve"]):
             log.info("Returning cdr3 method precise clusters.")
             df["family"] = df["precise_cluster"]
@@ -430,7 +423,12 @@ class HILARy:
         log.debug("Inferring family clusters for large groups.")
         large_dict = {}
         for g in large_to_do:
-            _, _, l, _ = g
+            v_gene, j_gene, l, sensitive_cluster = g
+            xy_threshold_2 = self.classes.query(
+                "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
+            )["xy_threshold"].values[0]
+            if xy_threshold_2 == "None":
+                xy_threshold_2 = 0
             dm = DistanceMatrix(
                 l=l,
                 alignment_length=self.alignment_length,
@@ -448,7 +446,9 @@ class HILARy:
             dct = self.singleLinkage(
                 indices=dfGrouped.get_group(g).index,
                 dist=d,
-                threshold=self.alignment_length + self.xy_threshold,
+                threshold=self.alignment_length
+                + self.xy_threshold
+                + xy_threshold_2,  # replace xy_threshold_2 by self.x0 for natanael"s method
             )
             large_dict.update(dct)
         df["new_index"] = df.index
