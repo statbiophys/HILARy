@@ -202,59 +202,6 @@ class DistanceMatrix:
         return dist + self.L
 
 
-class Null:
-    """Infer null x'-y=z distribution and threshold"""
-
-    def __init__(
-        self, mutations, cdr3_length=None, model=326713, alignment_length=250, size=1e6
-    ):
-        if cdr3_length is None:
-            self.cdr3_length = 45
-        else:
-            self.cdr3_length = cdr3_length
-        self.model = model
-        self.alignment_length = alignment_length
-        self.size = int(size)
-
-        bins = np.arange(50 + 1)
-        pni, nis = np.histogram(mutations, bins=bins)
-        p = pni[1:] / sum(pni[1:])
-        n1s = random.choice(nis[1:-1], size=self.size, replace=True, p=p)
-        n2s = random.choice(nis[1:-1], size=self.size, replace=True, p=p)
-        exp_n0 = n1s * n2s / self.alignment_length
-        n0s = random.poisson(lam=exp_n0, size=self.size)
-        nLs = n1s + n2s - 2 * n0s
-        std_n0 = np.sqrt(exp_n0)
-        ys = (n0s - exp_n0) / std_n0
-        p = self.readNull(self.cdr3_length)
-        ns = random.choice(
-            np.arange(self.cdr3_length + 1), size=self.size, replace=True, p=p
-        )
-        exp_n = self.cdr3_length / self.alignment_length * nLs + 1
-        std_n = np.sqrt(
-            exp_n * (self.cdr3_length + self.alignment_length) / self.alignment_length
-        )
-        xs = (ns - exp_n) / std_n
-        zs = xs - ys
-        self.z_cdf = np.sort(zs)
-
-    def readNull(self, l):
-        """Read estimated null distribution"""
-        # dirname = os.path.dirname(__file__)
-        dirname = ""
-        cdfs = pd.read_csv(
-            dirname + "/home/gathenes/gitlab/HILARy/hilary/cdfs_326713.csv"
-        )
-        cdf = cdfs.loc[cdfs["l"] == l].values[0, 1 : l + 1]
-        return np.diff(cdf, prepend=[0], append=[1])
-
-    def pRequired(self, prevalence, precision=0.99):
-        return prevalence / (1 - prevalence) * (1 - precision) / precision
-
-    def get_threshold(self, l, rho):
-        return self.z_cdf[int(self.size * self.pRequired(rho))]
-
-
 class HILARy:
     """Infer families using CDR3 and mutation information."""
 
@@ -287,18 +234,6 @@ class HILARy:
         self.cdfs = apriori.cdfs
         self.lengths = apriori.lengths
         self.threads = apriori.threads
-        self.scale = 1
-        ls = set(apriori.classes["cdr3_length"])
-        l = list(ls)[0]
-        rho = (
-            apriori.classes.loc[apriori.classes.cdr3_length == l]
-            .loc[~apriori.classes.v_gene.str.startswith("IGH")]["effective_prevalence"]
-            .values[0]
-        )
-        n = Null(
-            df.mutation_count, cdr3_length=l, alignment_length=self.alignment_length
-        )
-        self.x0 = n.get_threshold(l, rho)
 
     def singleLinkage(
         self,
