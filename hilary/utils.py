@@ -245,5 +245,5 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
     return TP / TP_FP, TP / P  # precision, sensitivity
 
 
-def pRequired(rho, pi=0.95):
+def pRequired(rho, pi=0.99):
     return rho / (1 + 1e-5 - rho) * (1 - pi) / pi

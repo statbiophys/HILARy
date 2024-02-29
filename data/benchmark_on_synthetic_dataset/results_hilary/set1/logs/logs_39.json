@@ -1,0 +1,20 @@
+{"data_path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/subsampled_simulations/families_cdr3l_39_1e5_set_1.csv.gz", "event": "\ud83d\udcd6 READING DATA ", "level": "info", "timestamp": "2024-02-29T21:57:36.288030Z"}
+{"event": "No 'sequence_id' column present in file.", "level": "warning", "timestamp": "2024-02-29T21:57:36.392744Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/debug/input_families_cdr3l_39_1e5_set_1.csv.gz", "event": "Saving input dataframe.", "level": "debug", "timestamp": "2024-02-29T21:57:36.400910Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/debug/preprocessed_input_families_cdr3l_39_1e5_set_1.csv.gz", "event": "Saving dataframe used by Hilary after preprocessing.", "level": "debug", "timestamp": "2024-02-29T21:57:43.753670Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/debug/classes_families_cdr3l_39_1e5_set_1.csv.gz", "event": "Saving classes used by Hilary after preprocessing.", "level": "debug", "timestamp": "2024-02-29T21:57:43.874796Z"}
+{"event": "\u23f3 COMPUTING HISTOGRAMS \u23f3.", "level": "info", "timestamp": "2024-02-29T21:57:43.875628Z"}
+{"event": "Computing CDR3 hamming distances within all large VJl classes.", "level": "debug", "timestamp": "2024-02-29T21:57:43.875767Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/debug/histograms_families_cdr3l_39_1e5_set_1.csv.gz", "event": "Saving histograms used by Hilary.", "level": "debug", "timestamp": "2024-02-29T21:57:46.593459Z"}
+{"event": "\u23f3 COMPUTING PARAMETERS \u23f3.", "level": "info", "timestamp": "2024-02-29T21:57:46.595646Z"}
+{"event": "\u23f3 COMPUTING THRESHOLDS \u23f3.", "level": "info", "timestamp": "2024-02-29T21:57:46.865356Z"}
+{"event": "\u23f3 COMPUTING PRECISE AND SENSITIVE CLUSTERS \u23f3.", "level": "info", "timestamp": "2024-02-29T21:57:46.959922Z"}
+{"event": "\u23f3 INFERRING FAMILIES WITH FULL XY METHOD\u23f3.", "level": "info", "timestamp": "2024-02-29T21:57:47.400916Z"}
+{"event": "\u23f3 COMPUTING XY THRESHOLDS \u23f3.", "level": "info", "timestamp": "2024-02-29T21:57:47.401076Z"}
+{"alignment_length": 319, "event": "Checking alignment length.", "level": "debug", "timestamp": "2024-02-29T21:57:49.524328Z"}
+{"event": "Inferring family clusters for small groups.", "level": "debug", "timestamp": "2024-02-29T21:57:49.525150Z"}
+{"event": "Inferring family clusters for large groups.", "level": "debug", "timestamp": "2024-02-29T21:57:49.954172Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/debug/parameters_families_cdr3l_39_1e5_set_1.csv.gz", "event": "Saving all parameters inferred by Hilary.", "level": "debug", "timestamp": "2024-02-29T21:57:49.962301Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/debug/preprocessed_output_families_cdr3l_39_1e5_set_1.csv.gz", "event": "Saving dataframe inferred by Hilary.", "level": "debug", "timestamp": "2024-02-29T21:57:49.964434Z"}
+{"output_path": "/home/gathenes/gitlab/HILARy/data/benchmark_on_synthetic_dataset/results_hilary/set1/inferred_families_cdr3l_39_1e5_set_1.csv.gz", "event": "\ud83d\udcbe SAVING RESULTS ", "level": "info", "timestamp": "2024-02-29T21:57:50.086206Z"}
+{"precision_full_method": 0.8039907696484322, "sensitivity_full_method": 0.9433030737378564, "precision_cdr3": 0.8901925391095066, "sensitivity_cdr3": 0.9425067685937251, "event": "Evaluating Hilary's performance on ground truth column 'clone_id'.", "level": "debug", "timestamp": "2024-02-29T21:57:51.326719Z"}

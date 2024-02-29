@@ -353,7 +353,7 @@ class HILARy:
     def to_do(
         self,
         df,
-        size_threshold: int = 10000,
+        size_threshold: int = 500,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 

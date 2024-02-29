@@ -1,0 +1,7 @@
+{   "alt_sequence_alignment_bis":"alt_sequence_alignment",
+    "alt_germline_alignment_bis":"alt_germline_alignment",
+    "V_GENE":"v_gene",
+    "J_GENE":"j_gene",
+    "CDR3_LENGTH":"cdr3_length",
+    "CDR3":"cdr3"
+}
