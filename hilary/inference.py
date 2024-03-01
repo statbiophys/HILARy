@@ -300,10 +300,8 @@ class HILARy:
                     std_n = np.sqrt(
                         exp_n * (l + self.alignment_length) / self.alignment_length
                     )
-
                     exp_n0 = n1n2 / self.alignment_length
                     std_n0 = np.sqrt(exp_n0)
-
                     x = (n - exp_n) / std_n
                     y = (n0 - exp_n0) / std_n0
                     distance = x - y + self.alignment_length
@@ -451,6 +449,7 @@ class HILARy:
                 + xy_threshold_2,  # replace xy_threshold_2 by self.x0 for natanael"s method
             )
             large_dict.update(dct)
+
         df["new_index"] = df.index
         df["family_cluster"] = df["family_cluster"].fillna(
             df["new_index"].map(large_dict)
