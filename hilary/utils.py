@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from itertools import combinations
 from multiprocessing import Pool
 from pathlib import Path
@@ -247,3 +248,28 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
 
 def pRequired(rho, pi=0.99):
     return rho / (1 + 1e-5 - rho) * (1 - pi) / pi
+
+
+def get_logger(verbose, use_json):
+    if verbose >= 2:  # noqa: PLR2004
+        logging_level = logging.DEBUG
+    elif verbose == 1:
+        logging_level = logging.INFO
+    else:
+        logging_level = logging.WARNING
+    if use_json:
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer(sort_keys=False)
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging_level),
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            renderer,
+        ],
+    )
+    log = structlog.get_logger()
+    return log

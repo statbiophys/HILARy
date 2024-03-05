@@ -89,3 +89,25 @@ class EM:
         for _ in range(self.howmany):
             theta = self.dicreteMaximization(theta)
         return theta
+
+    def discreteMix(self, x, theta):
+        """Evaluate mixture distribution"""
+        rho, mu = theta
+        if self.positives == "geometric":
+            return rho / (mu + 1) * (mu / (mu + 1)) ** x + (1 - rho) * self.const_p0[x]
+        if self.positives == "poisson":
+            return (
+                rho * mu**x * np.exp(-mu) / factorial(x) + (1 - rho) * self.const_p0[x]
+            )
+
+    def error(self, theta):
+        """Estimate goodness of fit
+        By default returns rescaled root MSE"""
+        y1 = self.h / sum(self.h)
+        y2 = self.discreteMix(self.b, theta)
+        mask = self.b < 0.2 * self.l
+        logy1, logy2 = np.log(y1[mask] + 5), np.log(y2[mask] + 5)
+
+        mse = ((logy1 - logy2) ** 2).sum()
+        rrmse = np.sqrt(mse)
+        return rrmse

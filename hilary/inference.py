@@ -9,13 +9,12 @@ import numpy as np
 import pandas as pd
 import structlog
 from atriegc import TrieNucl as Trie
-from numpy import random
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from textdistance import hamming
 
 from hilary.apriori import Apriori
-from hilary.utils import applyParallel
+from hilary.utils import applyParallel, pRequired
 
 # pylint: disable=invalid-name
 
@@ -205,7 +204,7 @@ class DistanceMatrix:
 class HILARy:
     """Infer families using CDR3 and mutation information."""
 
-    def __init__(self, apriori: Apriori, df, xy_threshold: int = 0):
+    def __init__(self, apriori: Apriori, df, crude: bool = False):
         """Initialize Hilary attributes using Apriori object.
 
         Args:
@@ -221,19 +220,104 @@ class HILARy:
             "index",
         ]
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
-        self.xy_threshold = xy_threshold
-        self.remaining = (
-            self.classes.query(
-                "v_gene != 'None' and precise_threshold < sensitive_threshold and pair_count > 0",
+        if not crude:
+            self.remaining = (
+                self.classes.query(
+                    "v_gene != 'None' and precise_threshold < sensitive_threshold and pair_count > 0",
+                )
+                .groupby(self.group)
+                .first()
+                .index
             )
-            .groupby(self.group)
-            .first()
-            .index
-        )
+
         self.silent = apriori.silent
         self.cdfs = apriori.cdfs
         self.lengths = apriori.lengths
         self.threads = apriori.threads
+
+    def simulate_xs_ys(
+        self,
+        args,
+    ):
+        size = int(1e6)
+        (_, _, l, prevalence, mutations, alignment_length, class_id) = args
+        if l not in self.lengths or len(mutations) < 100:
+            return (0, class_id)
+        bins = np.arange(np.max(mutations) + 1)
+        pni, nis = np.histogram(mutations, bins=bins)
+        p = pni[1:] / sum(pni[1:])
+        if len(nis) < 3:
+            return (0, class_id)
+        n1s = np.random.choice(nis[1:-1], size=size, replace=True, p=p)
+        n2s = np.random.choice(nis[1:-1], size=size, replace=True, p=p)
+        exp_n0 = n1s * n2s / alignment_length
+        n0s = np.random.poisson(lam=exp_n0, size=size)
+        std_n0 = np.sqrt(exp_n0)
+        ys = (n0s - exp_n0) / std_n0
+
+        cdf = self.cdfs.loc[self.cdfs["l"] == l].values[0, 1 : l + 1]
+        pn = np.diff(cdf, prepend=[0], append=[1])
+        ns = np.random.choice(
+            np.arange(l + 1), size=size, replace=True, p=pn / pn.sum()
+        )
+        nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
+        exp_n = (l / alignment_length) * (nLs + 1)
+        std_n = np.sqrt(exp_n * (l + alignment_length) / alignment_length)
+        xs = (ns - exp_n) / std_n
+        zs = xs - ys
+        return (
+            np.sort(zs)[min(int(size * pRequired(prevalence)), size - 1)],
+            class_id,
+        )
+
+    def get_xy_thresholds(self, df):
+        alignment_length = len(df["alt_sequence_alignment"].values[0])
+        mutations_grouped = []
+        for (
+            v_gene,
+            j_gene,
+            cdr3_length,
+            prevalence,
+            class_id,
+        ) in self.classes[
+            [
+                "v_gene",
+                "j_gene",
+                "cdr3_length",
+                "effective_prevalence",
+                "class_id",
+            ]
+        ].values:
+            if v_gene == "None":
+                mutations = df.query("cdr3_length==@cdr3_length")["mutation_count"]
+            else:
+                mutations = df.query(
+                    "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
+                )["mutation_count"]
+            mutations_grouped.append(
+                (
+                    v_gene,
+                    j_gene,
+                    cdr3_length,
+                    prevalence,
+                    mutations,
+                    alignment_length,
+                    class_id,
+                )
+            )
+
+        result = applyParallel(
+            mutations_grouped,
+            self.simulate_xs_ys,
+            cpuCount=self.threads,
+            silent=self.silent,
+            isint=True,
+        )
+
+        thresholds_data = pd.DataFrame(
+            result, columns=["xy_threshold", "class_id"]
+        ).set_index("class_id")
+        self.classes["xy_threshold"] = thresholds_data["xy_threshold"]
 
     def singleLinkage(
         self,
@@ -273,9 +357,10 @@ class HILARy:
         """
         df = args[1]  # (vgene, jgene, cdr3length, sensitive cluster), df
         v_gene, j_gene, l, _ = args[0]
-        xy_threshold_2 = self.classes.query(
+        xy_threshold = self.classes.query(
             "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
         )["xy_threshold"].values[0]
+
         indices = np.unique(df["precise_cluster"])
         if len(indices) <= 1:
             return df["precise_cluster"]
@@ -310,9 +395,7 @@ class HILARy:
         sl = self.singleLinkage(
             indices,
             squareform(distanceMatrix),
-            threshold=self.alignment_length
-            + self.xy_threshold
-            + xy_threshold_2,  # replace xy_threshold_2 by self.x0 for natanael"s method
+            threshold=self.alignment_length + xy_threshold,
         )
         return df["precise_cluster"].map(sl)
 
@@ -334,6 +417,36 @@ class HILARy:
         )
         df["precise_cluster"] = prec.infer(df, silent=self.silent)
         df["sensitive_cluster"] = sens.infer(df, silent=self.silent)
+        return df
+
+    def compute_crude_method_clusters(
+        self,
+        df: pd.DataFrame,
+        normalized_threshold: float = 0.2,
+        fixed_threshold: int = -1,
+    ) -> pd.DataFrame:
+        """Infer precise and sensitive clusters.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+
+        Returns:
+            pd.DataFrame with sensitive and precise clusters.
+        """
+        if fixed_threshold >= 0:
+            log.info(f"Using crude method with a fixed threshold of {fixed_threshold}")
+            self.classes["threshold"] = fixed_threshold
+        else:
+            log.info(
+                f"Using crude method with a normalized threshold of {normalized_threshold}"
+            )
+            self.classes["threshold"] = (
+                self.classes["cdr3_length"] * normalized_threshold
+            ).astype(int)
+        prec = CDR3Clustering(
+            self.classes[self.group + ["threshold"]], threads=self.threads
+        )
+        df["crude_method_family"] = prec.infer(df, silent=self.silent)
         return df
 
     def mark_class(self, df: pd.DataFrame) -> pd.Series:
@@ -422,11 +535,9 @@ class HILARy:
         large_dict = {}
         for g in large_to_do:
             v_gene, j_gene, l, sensitive_cluster = g
-            xy_threshold_2 = self.classes.query(
+            xy_threshold = self.classes.query(
                 "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
             )["xy_threshold"].values[0]
-            if xy_threshold_2 == "None":
-                xy_threshold_2 = 0
             dm = DistanceMatrix(
                 l=l,
                 alignment_length=self.alignment_length,
@@ -444,9 +555,7 @@ class HILARy:
             dct = self.singleLinkage(
                 indices=dfGrouped.get_group(g).index,
                 dist=d,
-                threshold=self.alignment_length
-                + self.xy_threshold
-                + xy_threshold_2,  # replace xy_threshold_2 by self.x0 for natanael"s method
+                threshold=self.alignment_length + xy_threshold,
             )
             large_dict.update(dct)
 
