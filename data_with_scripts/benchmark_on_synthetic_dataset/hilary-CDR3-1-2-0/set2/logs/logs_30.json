@@ -1,0 +1,11 @@
+{"data_path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/subsampled_simulations/families2_1e4_ppost326651_mut326713_cdr3l30.csv.gz", "event": "\ud83d\udcd6 READING DATA ", "level": "info", "timestamp": "2024-03-07T01:09:27.134416Z"}
+{"event": "No 'sequence_id' column present in file.", "level": "warning", "timestamp": "2024-03-07T01:09:27.266870Z"}
+{"event": "\u23f3 COMPUTING HISTOGRAMS \u23f3.", "level": "info", "timestamp": "2024-03-07T01:09:29.088548Z"}
+{"event": "Computing CDR3 hamming distances within all large VJl classes.", "level": "debug", "timestamp": "2024-03-07T01:09:29.088742Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/hilary-CDR3-1-2-0/set2/debug/histograms_families2_1e4_ppost326651_mut326713_cdr3l30.csv.gz", "event": "Saving histograms used by Hilary.", "level": "debug", "timestamp": "2024-03-07T01:09:31.618418Z"}
+{"event": "\u23f3 COMPUTING PARAMETERS \u23f3.", "level": "info", "timestamp": "2024-03-07T01:09:31.620934Z"}
+{"event": "\u23f3 COMPUTING THRESHOLDS \u23f3.", "level": "info", "timestamp": "2024-03-07T01:09:31.861519Z"}
+{"path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/hilary-CDR3-1-2-0/set2/debug/parameters_families2_1e4_ppost326651_mut326713_cdr3l30.csv.gz", "event": "Saving all parameters inferred by Hilary.", "level": "debug", "timestamp": "2024-03-07T01:09:31.947895Z"}
+{"event": "\u23f3 COMPUTING PRECISE AND SENSITIVE CLUSTERS \u23f3.", "level": "info", "timestamp": "2024-03-07T01:09:31.950014Z"}
+{"output_path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/hilary-CDR3-1-2-0/set2/inferred_families2_1e4_ppost326651_mut326713_cdr3l30.csv.gz", "event": "\ud83d\udcbe SAVING RESULTS ", "level": "info", "timestamp": "2024-03-07T01:09:32.347160Z"}
+{"precision_cdr3": 0.981625723986419, "sensitivity_cdr3": 0.9724517585717278, "event": "Evaluating Hilary's performance on ground truth column 'clone_id'.", "level": "debug", "timestamp": "2024-03-07T01:09:33.027517Z"}

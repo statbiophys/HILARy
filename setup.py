@@ -18,7 +18,7 @@ setup(
         "scipy>1.11,<2",
     ],
     name="hilary",
-    version="1.1.7",
+    version="1.2.0",
     url="https://github.com/statbiophys/HILARy/",
     author="Natanael Spisak, Gabriel Athènes",
     author_email="natanael.spisak@gmail.com, gabriel.athenes@polytechnique.edu",
@@ -26,7 +26,7 @@ setup(
     include_package_data=True,
     entry_points={
         "console_scripts": [
-            "infer=hilary.__main__:app",
+            "infer-lineages=hilary.__main__:app",
         ],
     },
     classifiers=[

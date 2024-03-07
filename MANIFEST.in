@@ -19,6 +19,7 @@ graft hilary
 
 prune dist
 prune data
+prune data_with_scripts
 prune benchmark_data
 prune .ruff_cache
 prune doc

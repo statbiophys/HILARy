@@ -73,7 +73,7 @@ class EM:
         """
         P1, P0 = self.discreteExpectation(theta)
         P1Sum, P0Sum = (self.h * P1).sum(), (self.h * P0).sum()
-        rho = min(P1Sum / (P1Sum + P0Sum), 1.0)
+        rho = min(P1Sum / (P1Sum + P0Sum + 1e-5), 1.0)
         mu = np.dot(self.h * P1, self.b) / (P1Sum + 1e-5)
         return rho, mu
 

@@ -197,13 +197,13 @@ def cdr3_method(
         help="Choose number of cpus on which to run code. -1 to use all available cpus.",
     ),
     precision: float = typer.Option(
-        1,
+        0.99,
         "--precision",
         "-p",
         help="Choose desired precision.",
     ),
     sensitivity: float = typer.Option(
-        1,
+        0.9,
         "--sensitivity",
         "-s",
         help="Choose desired sensitivity.",
@@ -376,7 +376,7 @@ def full_method(
         help="Choose desired precision.",
     ),
     sensitivity: float = typer.Option(
-        1,
+        0.9,
         "--sensitivity",
         "-s",
         help="Choose desired sensitivity.",

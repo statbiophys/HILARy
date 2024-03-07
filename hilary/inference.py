@@ -241,7 +241,7 @@ class HILARy:
     ):
         size = int(1e6)
         (_, _, l, prevalence, mutations, alignment_length, class_id) = args
-        if l not in self.lengths or len(mutations) < 100:
+        if l not in self.lengths or (len(mutations) < 100):
             return (0, class_id)
         bins = np.arange(np.max(mutations) + 1)
         pni, nis = np.histogram(mutations, bins=bins)
