@@ -12,6 +12,7 @@ from atriegc import TrieNucl as Trie
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from textdistance import hamming
+from tqdm import tqdm
 
 from hilary.apriori import Apriori
 from hilary.utils import applyParallel, pRequired
@@ -229,7 +230,6 @@ class HILARy:
                 .first()
                 .index
             )
-
         self.silent = apriori.silent
         self.cdfs = apriori.cdfs
         self.lengths = apriori.lengths
@@ -279,15 +279,17 @@ class HILARy:
             cdr3_length,
             prevalence,
             class_id,
-        ) in self.classes[
-            [
-                "v_gene",
-                "j_gene",
-                "cdr3_length",
-                "effective_prevalence",
-                "class_id",
-            ]
-        ].values:
+        ) in tqdm(
+            self.classes[
+                [
+                    "v_gene",
+                    "j_gene",
+                    "cdr3_length",
+                    "effective_prevalence",
+                    "class_id",
+                ]
+            ].values
+        ):
             if v_gene == "None":
                 mutations = df.query("cdr3_length==@cdr3_length")["mutation_count"]
             else:
