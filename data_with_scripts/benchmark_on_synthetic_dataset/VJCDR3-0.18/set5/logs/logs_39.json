@@ -1,6 +1,0 @@
-{"data_path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/subsampled_simulations/families5_1e4_ppost326651_mut326713_cdr3l39.csv.gz", "event": "\ud83d\udcd6 READING DATA ", "level": "info", "timestamp": "2024-03-06T19:25:24.243899Z"}
-{"event": "No 'sequence_id' column present in file.", "level": "warning", "timestamp": "2024-03-06T19:25:24.347640Z"}
-{"path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/results_hilary_crude_0.18/set5/debug/input_families5_1e4_ppost326651_mut326713_cdr3l39.csv.gz", "event": "Saving input dataframe.", "level": "debug", "timestamp": "2024-03-06T19:25:24.355948Z"}
-{"event": "Using crude method with a normalized threshold of 0.18", "level": "info", "timestamp": "2024-03-06T19:25:44.329361Z"}
-{"output_path": "/home/gathenes/gitlab/HILARy/data_with_scripts/benchmark_on_synthetic_dataset/results_hilary_crude_0.18/set5/inferred_families5_1e4_ppost326651_mut326713_cdr3l39.csv.gz", "event": "\ud83d\udcbe SAVING RESULTS ", "level": "info", "timestamp": "2024-03-06T19:25:44.535149Z"}
-{"precision_crude": 0.9955877900018745, "sensitivity_crude": 0.9976160203432931, "event": "Evaluating Hilary's performance on ground truth column 'clone_id'.", "level": "debug", "timestamp": "2024-03-06T19:25:45.282049Z"}

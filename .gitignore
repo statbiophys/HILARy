@@ -143,3 +143,12 @@ my_pip_package.egg-info/
 *.gz
 *logs.json
 *debug*
+
+*.csv
+*.tsv
+*.xlsx
+*.gz
+*.tar
+*.yaml
+*.yml
+*.json

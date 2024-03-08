@@ -20,8 +20,8 @@ setup(
     name="hilary",
     version="1.2.0",
     url="https://github.com/statbiophys/HILARy/",
-    author="Natanael Spisak, Gabriel Athènes",
-    author_email="natanael.spisak@gmail.com, gabriel.athenes@polytechnique.edu",
+    author="Gabriel Athènes,Natanael Spisak",
+    author_email="gabriel.athenes@polytechnique.edu,natanael.spisak@gmail.com",
     packages=find_packages(),
     include_package_data=True,
     entry_points={
