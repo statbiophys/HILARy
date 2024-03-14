@@ -17,30 +17,53 @@ Inputs needs to be a tsv or excel file in airr format, meaning with the followin
 
 ### 1.2 From the command line
 
-`infer --help`
+Hilary currently sypports three methods. A standard method performing single linkage clustering with fixed threshold on CDR3 pairwise Hamming distances. A method performing single linkage clustering with adaptive threshold on CDR3 Hamming distances (HILARy-CDR3). The full method performing single linkage clustering with adaptive threshold and using mutations in templated V and J regions (HILARy-full). Here are the different methods :
 
 ```
+infer-lineages --help
+Usage: infer-lineages [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  crude-method  Infer lineages with Standard method from data_path excel file.
+  cdr3-method   Infer lineages with HILARy-CDR3 from data_path excel file.
+  full-method   Infer lineages with HILARy-full from data_path excel file.
+```
+
+To get the options of the full method for example :
+
+```
+infer-lineages full-method --help
+Usage: infer-lineages full-method [OPTIONS] DATA_PATH
+
+  Infer lineages with HILARy-full from data_path excel file.
+
 Arguments:
   DATA_PATH  Path of the excel file to infer lineages.  [required]
 
 Options:
+  --kappa-file PATH        Path of the kappa chain file, hilary will
+                           automatically use its paired option.
   -v, --verbose            Set logging verbosity level.  [default: 0]
-  -t, --threads INTEGER    Choose number of cpus on which to run code.
-                           [default: all available]
-  -p, --precision FLOAT    Choose desired precision.  [default: 0.99]
+  -t, --threads INTEGER    Choose number of cpus on which to run code. -1 to
+                           use all available cpus.  [default: 1]
+  -p, --precision FLOAT    Choose desired precision.  [default: 1]
   -s, --sensitivity FLOAT  Choose desired sensitivity.  [default: 0.9]
-  --nmin INTEGER           Infer prevalence and mu on classes of size larger than nmin.
-                            Mean prevalence is assigned to lower than nmin classes.  [default: 1000]
-  -m, --model INTEGER      Model name to infer Null distribution.  [default: 326713]
   --silent                 Do not show progress bars if used.
-  --result-folder PATH     Where to save the result files. By default it will be saved in a
-                            'result/' folder in input data's parent directory.
-  --config PATH            Configuration file for column names. File should be a json with keys as
-                            your data's column names and values as hilary's required column names.
+  --result-folder PATH     Where to save the result files. By default it will
+                           be saved in a 'result/' folder.
+  --config PATH            Configuration file for column names. File should be
+                           a json with keys as your             data's column
+                           names and values as hilary's required column names.
+  --override               Override existing results.
+  --json / --text          Print logs as JSON or text.  [default: text]
+  --without-heuristic      DO not use heuristic for choosing the xy threshold.
   --help                   Show this message and exit.
 ```
 
-**example :** `infer /home/gabrielathenes/Documents/study/test.xlsx --nmin 10000 -vv --result-folder ../hilary_test`
+**example :** `infer-lineages full-method /home/gabrielathenes/Documents/study/exemple.xlsx`
 
 ### 1.3 From Python
 
@@ -78,7 +101,4 @@ For a wide range of parameters, the method is predicted to achieve both high pre
 For each class, compute a high sensitivity (>90%) partition exactly like in step 2 but replacing precision with sensitivity. If the partition coincides with a high precision partition, then the partition is precise and sensitive and nothing needs to be done. Otherwise, we make the partition more precise by removing false positives. To do so we compute two variables $x'$ and $y$ coding respectfully for CDR3 divergence and number of mutations. We then classify pairs as related when $y-x'> t$ (resp. unrelated when <) with $t$ chosen to achieve high precision similarly than for the CDR3-based method.
 
 **Summary**
-Suppose we represent related sequences left (+ signs) and unrelated sequences right (o signs) on a plane. The rectangle-like shape is the estimation of positive sequences. In case the CDR3-based sensitive partition is not precise enough, the mutation based method upgrades the partition method by removing false positives.
-![Summary](./doc/mutations.png)
-
-# TODO
+![Summary](./doc/merging_partitions-1.png)

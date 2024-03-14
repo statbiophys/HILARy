@@ -1,5 +1,8 @@
 # 1. Benchmark report of the [HILARy paper](https://doi.org/10.1101/2022.12.22.521661)
 
+:warning: All benchmark is done with version 1.2.0. To install it :
+`pip install hilary==1.2.0`
+
 There are three uses of HILARy mentionned in the article.
 
 1. On data from [Briney](https://www.nature.com/articles/s41586-019-0879-y). This concerns figure 6 of the article. The philogenies inferred with HILARy are obtained using `HILARy/tutorial.ipynb`. The working directory of this tutorial is `./data_from_briney/`, where data will be downloaded and lineages inferred.
