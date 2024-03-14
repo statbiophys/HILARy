@@ -106,8 +106,8 @@ class EM:
         y1 = self.h / sum(self.h)
         y2 = self.discreteMix(self.b, theta)
         mask = self.b < 0.2 * self.l
-        logy1, logy2 = np.log(y1[mask] + 5), np.log(y2[mask] + 5)
+        y1m, y2m = y1[mask], y2[mask]
 
-        mse = ((logy1 - logy2) ** 2).sum()
+        mse = ((y1m - y2m) ** 2).sum()
         rrmse = np.sqrt(mse)
         return rrmse

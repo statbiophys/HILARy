@@ -15,21 +15,21 @@ app = typer.Typer(add_completion=False)
 @app.command()
 def main():
     """Save all dataframes from all modules in one only excel file."""
-    parser = argparse.ArgumentParser(description="Parse the log folder.")
+    parser = argparse.ArgumentParser(description="")
     parser.add_argument(
         "simu_path",
         type=Path,
-        help="Path to the analysis folder. Example XXX/P33/analysis/.",
+        help="",
     )
     parser.add_argument(
         "result_path",
         type=Path,
-        help="Path to the analysis folder. Example XXX/P33/analysis/.",
+        help="",
     )
     parser.add_argument(
         "data_negative",
         type=Path,
-        help="Path to the analysis folder. Example XXX/P33/analysis/.",
+        help="",
     )
     args = parser.parse_args()
     data_simu = pd.read_csv(args.simu_path)
