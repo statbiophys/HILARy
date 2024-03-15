@@ -16,7 +16,7 @@ In order not to put data on github we upload it on zenodo using the same folder 
 Finally,
 - `./article_figure_scripts/` contains scripts ot reproduce the figures of the article.
 - `./null_distributions/` contains the null distributions used for $P_F$ and computed by Sonnia.
-- `./human_genes/` contains the V gene and J gene to process data from Briney for lineage inference.
+- `./human_genes/` contains the V gene and J gene to process data from Briney et al. 2019 for lineage inference.
 
 
 # 2. Benchmark on the dataset from [partis](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1010723).
