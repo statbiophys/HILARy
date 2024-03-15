@@ -5,7 +5,7 @@
 
 There are three uses of HILARy mentionned in the article.
 
-1. On data from [Briney](https://www.nature.com/articles/s41586-019-0879-y). This concerns figure 6 of the article. The philogenies inferred with HILARy are obtained using `HILARy/tutorial.ipynb`. The working directory of this tutorial is `./data_from_briney/`, where data will be downloaded and lineages inferred.
+1. On data from [Briney et al. 2019](https://www.nature.com/articles/s41586-019-0879-y). This concerns figure 6 of the article. The philogenies inferred with HILARy are obtained using `HILARy/tutorial.ipynb`. The working directory of this tutorial is `./data_from_briney/`, where data will be downloaded and lineages inferred.
 
 2. On the dataset used in article [Inference of B cell clonal families using heavy/light chain pairing information](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1010723). The working directory of this benchmark is `./benchmark_on_partis_dataset/`, where all scripts used for inference can be found.
 
