@@ -80,7 +80,7 @@ def crude_method(
         help="Threshold to perform single linkage clustering on cdr3 normalized hamming distance.",
     ),
 ) -> None:
-    """Infer lineages with HILARy-CDR3 from data_path excel file."""
+    """Infer lineages with standard method from data_path excel file."""
     if result_folder is None:
         result_folder = data_path.parents[0] / Path("hilary_results/")
     result_folder.mkdir(parents=True, exist_ok=True)

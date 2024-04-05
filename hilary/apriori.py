@@ -243,7 +243,8 @@ class Apriori:
             pd.DataFrame: Precise and sensitive thresholds.
         """
         tuple_l, ldf = args
-        l = tuple_l[0]
+        l = int(tuple_l[0])
+
         if l > self.lengths[-1] or l < self.lengths[0] or l % 3:
             ldf[["precise_threshold", "sensitive_threshold"]] = (
                 np.ones((len(ldf), 2), dtype=int) * l // 5

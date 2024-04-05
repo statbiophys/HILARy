@@ -92,18 +92,23 @@ def preprocess(
         "mutation_count",
     ]
     if "v_gene" not in df.columns:
-        df[["v_gene", "_"]] = df["v_call"].str.split("*", expand=True)
+        df.dropna(subset=["v_call"], inplace=True)
+        df[["v_gene", "_"]] = df["v_call"].str.split("*", expand=True, n=1)
     if "j_gene" not in df.columns:
-        df[["j_gene", "_"]] = df["j_call"].str.split("*", expand=True)
+        df.dropna(subset=["j_call"], inplace=True)
+        df[["j_gene", "_"]] = df["j_call"].str.split("*", expand=True, n=1)
     if "cdr3" not in df.columns:
+        df.dropna(subset=["junction"], inplace=True)
         df["cdr3"] = df["junction"].str[3:-3]
     df["cdr3_length"] = df["cdr3"].str.len()
     if "alt_sequence_alignment" not in df.columns:
+        df.dropna(subset=["v_sequence_alignment", "j_sequence_alignment"], inplace=True)
         df["alt_sequence_alignment"] = (
             df["v_sequence_alignment"] + df["j_sequence_alignment"]
         )
 
     if "alt_germline_alignment" not in df.columns:
+        df.dropna(subset=["v_germline_alignment", "j_germline_alignment"], inplace=True)
         df["alt_germline_alignment"] = (
             df["v_germline_alignment"] + df["j_germline_alignment"]
         )
@@ -114,7 +119,7 @@ def preprocess(
         silent=silent,
         cpuCount=threads,
     )
-    return df[usecols].astype({"cdr3_length": int}).dropna()
+    return df[usecols].dropna().astype({"cdr3_length": int})
 
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
