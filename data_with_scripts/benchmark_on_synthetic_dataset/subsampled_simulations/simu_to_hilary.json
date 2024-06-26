@@ -4,5 +4,5 @@
     "J_GENE":"j_gene",
     "CDR3_LENGTH":"cdr3_length",
     "CDR3":"cdr3",
-    "FAMILY":"clone_id"
+    "FAMILY":"ground_truth"
 }
