@@ -233,13 +233,13 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
     Returns:
         (precision,sensitivity)
     """
-    if "clone_id" not in df.columns:
-        log.debug("Clone id not a column value.")
+    if "ground_truth" not in df.columns:
+        log.debug("ground_truth not a column value.")
         return None, None
     TP = 0
-    P = binom(df.groupby(["clone_id"]).size(), 2).sum()
+    P = binom(df.groupby(["ground_truth"]).size(), 2).sum()
     TP_FP = binom(df.groupby([partition]).size(), 2).sum()
-    for _, family in tqdm(df.groupby(["clone_id"]), disable=True):
+    for _, family in tqdm(df.groupby(["ground_truth"]), disable=True):
         for r1, r2 in combinations(family[partition], 2):
             if r1 == r2:
                 TP += 1

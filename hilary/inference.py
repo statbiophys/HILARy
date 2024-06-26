@@ -511,14 +511,14 @@ class HILARy:
             df(pd.DataFrame):Dataframe of sequences.
 
         Returns:
-            df(pd.DataFrame): Dataframe with inferred clonal families in 'family'.
+            df(pd.DataFrame): Dataframe with inferred clonal families in 'clone_id'.
         """
         df, small_to_do, large_to_do = self.to_do(df)
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
         log.debug("Checking alignment length.", alignment_length=self.alignment_length)
         if not sum(df["to_resolve"]):
             log.info("Returning cdr3 method precise clusters.")
-            df["family"] = df["precise_cluster"]
+            df["clone_id"] = df["precise_cluster"]
             df = df.drop(
                 columns=[
                     "cluster",
@@ -567,7 +567,7 @@ class HILARy:
             df["new_index"].map(large_dict)
         )
         df.fillna(value={"family_cluster": 0}, inplace=True)
-        df["family"] = (
+        df["clone_id"] = (
             df.groupby(
                 self.group + ["sensitive_cluster", "family_cluster"],
             ).ngroup()

@@ -15,6 +15,8 @@ Inputs needs to be a tsv or excel file in airr format, meaning with the followin
 | 3           | IGHV1-74*01 | IGHJ4*01 | TGTGCAAGA | CATGCAACT            | GCTATGGAC            | CTACAATCA            | GCTATGGAC            |
 | 4           | IGHV5-17*01 | IGHJ4*01 | TGTGCAAGA | CCCTGTTCC            | CTATGCTATGG          | GAGGTGTTC            | CTATGCTAT            |
 
+Following version 1.2.2, the clonal family is represented in column `clone_id`. (This column used to be name `family` in the benchmark scripts `/data_with_scripts/`).
+
 ### 1.2 From the command line
 
 Hilary currently sypports three methods. A standard method performing single linkage clustering with fixed threshold on CDR3 pairwise Hamming distances. A method performing single linkage clustering with adaptive threshold on CDR3 Hamming distances (HILARy-CDR3). The full method performing single linkage clustering with adaptive threshold and using mutations in templated V and J regions (HILARy-full). Here are the different methods :
