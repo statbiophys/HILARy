@@ -1,1 +1,5 @@
+## 1.2.1 (2024-06-26)
+-[DOCUMENTATION UPDATE] Changing the out column 'family' to 'clone_id'.
+
+
 ## 1.2.0 (2024-03-14)
