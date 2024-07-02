@@ -15,7 +15,19 @@ Inputs needs to be a tsv or excel file in airr format, meaning with the followin
 | 3           | IGHV1-74*01 | IGHJ4*01 | TGTGCAAGA | CATGCAACT            | GCTATGGAC            | CTACAATCA            | GCTATGGAC            |
 | 4           | IGHV5-17*01 | IGHJ4*01 | TGTGCAAGA | CCCTGTTCC            | CTATGCTATGG          | GAGGTGTTC            | CTATGCTAT            |
 
-Following version 1.2.2, the clonal family is represented in column `clone_id`. (This column used to be name `family` in the benchmark scripts `/data_with_scripts/`).
+It is possible to give as input the concatenated `v_sequence_alignment` and `j_sequence_alignment` (respectively  `v_germline_alignment` and `j_germline_alignment`) as column `alt_sequence_alignment` (respectively `alt_germline_alignment`), as well as provide column `cdr3` instead of `junction`.
+So another format could be :
+
+| sequence_id | v_call      | j_call   | cdr3      | alt_sequence_alignment | alt_germline_alignment |
+| ----------- | ----------- | -------- | --------- | ---------------------- | ---------------------- |
+| 1           | IGHV1-34*01 | IGHJ3*01 | TGTGCAACC | TTAGTACTT              | TTGCTTACT              |
+| 2           | IGHV1-18*01 | IGHJ4*01 | TGTGCAAGA | TTAATCCTA              | GCTATGGAC              |
+| 3           | IGHV1-74*01 | IGHJ4*01 | TGTGCAAGA | CATGCAACT              | GCTATGGAC              |
+| 4           | IGHV5-17*01 | IGHJ4*01 | TGTGCAAGA | CCCTGTTCC              | CTATGCTATGG            |
+
+Note that columns of required inputs stay in the output file.
+
+Following version 1.2.2, the clonal family is represented in column `clone_id`. (This column used to be named `family` in the benchmark scripts `/data_with_scripts/`).
 
 ### 1.2 From the command line
 
