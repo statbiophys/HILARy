@@ -5,8 +5,9 @@ from __future__ import annotations
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import typer
 
 from hilary.apriori import Apriori
@@ -468,7 +469,6 @@ def full_method(
     save_dataframe(dataframe=dataframe, save_path=output_path)
 
     if dataframe_kappa is not None:
-        dataframe_kappa.drop(columns=["cdr3_based_family"], inplace=True)
         dataframe_kappa["clone_id"] = dataframe_inferred["clone_id"]
         output_path_kappa = result_folder / Path(
             f"inferred_full_method_{kappa_file.name}"
