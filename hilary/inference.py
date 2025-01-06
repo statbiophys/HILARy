@@ -57,7 +57,7 @@ class CDR3Clustering:
         if t >= 0:  # ? question t>0 better ?
             dct = trie.clusters(t)
             return df["cdr3"].map(dct)
-        return df.index.to_frame()
+        return pd.Series(df.index, index=df.index)
 
     def infer(
         self,
