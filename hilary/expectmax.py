@@ -14,7 +14,7 @@ class EM:
 
     def __init__(
         self,
-        cdfs: pd.DataFrame,
+        cdf: np.array,
         l: float,
         h: np.ndarray,
         howmany: int = 10,
@@ -32,7 +32,7 @@ class EM:
         self.l = int(l)
         self.h = h.astype(int)[: self.l + 1]
         self.b = np.arange(self.l + 1, dtype=int)
-        self.cdfs = cdfs
+        self.cdf = cdf
         self.const_p0 = self.readNull()
         self.howmany = howmany
         self.positives = positives
@@ -43,8 +43,8 @@ class EM:
         Returns:
             np.ndarray: Histogram of null distributions (Ppost).
         """
-        cdf = self.cdfs.loc[self.cdfs["l"] == self.l].values[0, 1 : self.l + 1]
-        return np.diff(cdf, prepend=[0], append=[1])
+        # cdf = self.cdfs.loc[self.cdfs["l"] == self.l].values[0, 1 : self.l + 1]
+        return np.diff(self.cdf, prepend=[0], append=[1])
 
     def discreteExpectation(self, theta: tuple[float, float]) -> tuple[float, float]:
         """Calculate membership probabilities.
@@ -96,9 +96,7 @@ class EM:
         if self.positives == "geometric":
             return rho / (mu + 1) * (mu / (mu + 1)) ** x + (1 - rho) * self.const_p0[x]
         if self.positives == "poisson":
-            return (
-                rho * mu**x * np.exp(-mu) / factorial(x) + (1 - rho) * self.const_p0[x]
-            )
+            return rho * mu**x * np.exp(-mu) / factorial(x) + (1 - rho) * self.const_p0[x]
 
     def error(self, theta):
         """Estimate goodness of fit

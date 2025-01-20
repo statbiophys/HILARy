@@ -70,9 +70,7 @@ class Apriori:
             )
         self.classes = pd.DataFrame()
 
-    def preprocess(
-        self, df: pd.DataFrame, df_kappa: pd.DataFrame | None = None
-    ) -> pd.DataFrame:
+    def preprocess(self, df: pd.DataFrame, df_kappa: pd.DataFrame | None = None) -> pd.DataFrame:
         """Remove non productive sequences from dataframe.
 
         If df_kappa is not null then group VH, JH, VK and JK genes together and concatenate heavy
@@ -173,10 +171,11 @@ class Apriori:
         """
         class_id, h = args
         l = self.classes.loc[self.classes.class_id == class_id].cdr3_length.values[0]
-        em = EM(cdfs=self.cdfs, l=l, h=h.values[0, 1:], positives="geometric")
+        cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+        em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="geometric")
         rho_geo, mu_geo = em.discreteEM()
         error_geo = em.error([rho_geo, mu_geo])
-        em = EM(cdfs=self.cdfs, l=l, h=h.values[0, 1:], positives="poisson")
+        em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="poisson")
         rho_poisson, mu_poisson = em.discreteEM()
         error_poisson = em.error([rho_geo, mu_geo])
         result = pd.DataFrame(
@@ -223,9 +222,7 @@ class Apriori:
         ].min(axis=1)
         self.classes["error_geo"] = parameters["error_geo"]
         self.classes["error_poisson"] = parameters["error_poisson"]
-        self.classes["mean_distance"] = (
-            parameters["mu_poisson"] / self.classes["cdr3_length"]
-        )
+        self.classes["mean_distance"] = parameters["mu_poisson"] / self.classes["cdr3_length"]
         self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2)
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
             0.04,
@@ -254,10 +251,8 @@ class Apriori:
         rhos = ldf["effective_prevalence"]
         mus = ldf["effective_mean_distance"] * l
         bins = np.arange(l + 1)
-        cdf0 = self.cdfs.loc[self.cdfs["l"] == l].values[0, 1 : l + 2]
-        cdf1 = (
-            np.array([mu**bins * np.exp(-mu) for mu in mus]) / factorial(bins)
-        ).cumsum(axis=1)
+        cdf0 = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 2]
+        cdf1 = (np.array([mu**bins * np.exp(-mu) for mu in mus]) / factorial(bins)).cumsum(axis=1)
         ps = cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum(axis=1)
         t_prec = (
