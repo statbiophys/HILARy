@@ -1,0 +1,61 @@
+[tool.setuptools]
+include-package-data = true
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hilary"
+version = "1.2.3"
+requires-python = ">=3.9"
+dependencies = [
+        "numpy>=1.20.0,<2",
+        "openpyxl>=3.1,<4",
+        "pandas>=2.2,<3",
+        "scipy>=1.6,<2",
+        "structlog>=22.3.0,<23",
+        "textdistance>=4.6,<5",
+        "tqdm>=4.66,<5",
+        "typer>=0.9,<1",
+        "atriegc>=0.0.3,<1.0.0",
+        "scipy>1.11,<2",
+]
+authors = [ {name = "Natanael Spisak", email = "natanael.spisak@gmail.com"}, {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
+maintainers = [{name = "Natanael Spisak", email = "natanael.spisak@gmail.com"}, {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
+description = ''
+readme = "README.md"
+license = {file = "LICENSE"}
+classifiers=[
+            'Development Status :: 3 - Alpha',
+            'Intended Audience :: Developers',
+            'Intended Audience :: Healthcare Industry',
+            'Intended Audience :: Science/Research',
+            'Topic :: Scientific/Engineering :: Bio-Informatics',
+            'Topic :: Scientific/Engineering :: Physics',
+            'Topic :: Scientific/Engineering :: Medical Science Apps.',
+            'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+            'Natural Language :: English',
+            'Programming Language :: Python :: 3.9',
+            'Programming Language :: Python :: 3.10',
+            'Programming Language :: Python :: 3.11',
+            'Programming Language :: Python :: 3.12',
+            ]
+             
+[project.urls]
+Homepage = "https://github.com/statbiophys/hilary"
+#Documentation = "https://sonnia.readthedocs.io/en/latest/index.html"
+
+[project.scripts]
+infer-lineages='hilary.__main__:app'
+#sonnia-generate='sonnia.generate:main'
+#sonnia-evaluate='sonnia.evaluate:main'
+
+#exclude = [
+#  "data_with_scripts/",
+#]
+
+[tool.setuptools.packages.find]
+include = ["hilary*"]
+exclude=["data_with_scripts*"]
+namespaces = false
