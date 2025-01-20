@@ -1,3 +1,6 @@
+# HILARy
+HILARy (high-precision inference of lineages in antibody repertoires) is an efficient, fast, and precise method to identify clonal families from single- or paired-chain repertoire sequencing datasets. HILARy combines probabilistic models that capture the receptor generation and selection statistics with adapted clustering methods to achieve consistently high inference accuracy. For more information have a look at our [paper](https://elifesciences.org/articles/86181).
+
 # 0. Installation
 
 `pip install hilary`
