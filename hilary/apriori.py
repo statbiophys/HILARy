@@ -171,7 +171,13 @@ class Apriori:
         """
         class_id, h = args
         l = self.classes.loc[self.classes.class_id == class_id].cdr3_length.values[0]
-        cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+        if 'j_gene' in self.cdfs.columns:
+            j= self.classes.loc[self.classes.class_id == class_id].j_gene.values[0]
+            sel=np.logical_and(self.cdfs["cdr3_length"] == l,self.cdfs["j_gene"] == j)
+            if sum(sel)>0: cdf = self.cdfs.loc[sel].values[0, 1 : l + 1] ## found jl cdf
+            else: cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+        else:
+            cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
         em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="geometric")
         rho_geo, mu_geo = em.discreteEM()
         error_geo = em.error([rho_geo, mu_geo])
