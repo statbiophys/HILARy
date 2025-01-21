@@ -9,40 +9,41 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 import structlog
 from scipy.special import binom
 from textdistance import hamming
 from tqdm import tqdm
-import numpy as np
+
 log = structlog.get_logger(__name__)
 
 # pylint: disable=invalid-name
 
-def return_cdf(
-    classes:pd.DataFrame,
-    cdfs:pd.DataFrame,
-    class_id: int
-) -> np.array:
+
+def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.array:
     """Class to extract the right cdf
-    
+
     Args:
         classes (pd.DataFrame): classes df (see apriori)
         cdfs (pd.DataFrame): cdfs object (see apriori)
         class_id (int): id of the class to return
-    
+
     Returns:
         np.array: array encoding the cdf
     """
     l = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
-    if 'j_gene' in cdfs.columns:
-        j= classes.loc[classes.class_id == class_id].j_gene.values[0]
-        sel=np.logical_and(cdfs["cdr3_length"] == l,cdfs["j_gene"] == j)
-        if sum(sel)>0: cdf = cdfs.loc[sel].values[0, 1 : l + 1] ## found jl cdf
-        else: cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+    if "j_gene" in cdfs.columns:
+        j = classes.loc[classes.class_id == class_id].j_gene.values[0]
+        sel = np.logical_and(cdfs["cdr3_length"] == l, cdfs["j_gene"] == j)
+        if sum(sel) > 0:
+            cdf = cdfs.loc[sel].values[0, 2 : l + 1]  ## found jl cdf
+        else:
+            cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 2 : l + 1]
     else:
         cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
     return cdf
+
 
 def applyParallel(
     dfGrouped: list,
