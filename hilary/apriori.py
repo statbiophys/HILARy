@@ -171,8 +171,7 @@ class Apriori:
         """
         class_id, h = args
         l = self.classes.loc[self.classes.class_id == class_id].cdr3_length.values[0]
-
-        cdf=return_cdf(self.classes,self.cdfs,class_id)
+        cdf = return_cdf(self.classes, self.cdfs, class_id)
         em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="geometric")
         rho_geo, mu_geo = em.discreteEM()
         error_geo = em.error([rho_geo, mu_geo])

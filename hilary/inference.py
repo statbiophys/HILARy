@@ -15,7 +15,7 @@ from textdistance import hamming
 from tqdm import tqdm
 
 from hilary.apriori import Apriori
-from hilary.utils import applyParallel, pRequired,return_cdf
+from hilary.utils import applyParallel, pRequired, return_cdf
 
 # pylint: disable=invalid-name
 
@@ -250,9 +250,9 @@ class HILARy:
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
 
-        cdf=return_cdf(self.classes,self.cdfs,class_id)
-        #cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1] ### I don't like this one here.
-        
+        cdf = return_cdf(self.classes, self.cdfs, class_id)
+        # cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1] ### I don't like this one here.
+
         pn = np.diff(cdf, prepend=[0], append=[1])
         ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
         nLs = np.maximum(n1s + n2s - 2 * n0s, 0)

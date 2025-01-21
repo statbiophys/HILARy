@@ -37,9 +37,9 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.a
         j = classes.loc[classes.class_id == class_id].j_gene.values[0]
         sel = np.logical_and(cdfs["cdr3_length"] == l, cdfs["j_gene"] == j)
         if sum(sel) > 0:
-            cdf = cdfs.loc[sel].values[0, 2 : l + 1]  ## found jl cdf
+            cdf = cdfs.loc[sel].values[0, 2 : l + 2]  ## found jl cdf
         else:
-            cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 2 : l + 1]
+            cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 2 : l + 2]
     else:
         cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
     return cdf
