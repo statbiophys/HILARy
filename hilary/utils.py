@@ -29,7 +29,8 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.a
         cdfs (pd.DataFrame): cdfs object (see apriori)
         class_id (int): id of the class to return
 
-    Returns:
+    Returns
+    -------
         np.array: array encoding the cdf
     """
     l = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
@@ -71,7 +72,8 @@ def applyParallel(
         cpuCount (int, optional): Number of cpus to use. Defaults to 1.
         silent (bool): if true do not show progress bars.
 
-    Returns:
+    Returns
+    -------
         pd.Dataframe: Dataframe concatenating output of func on each group.
     """
     with Pool(cpuCount) as p:
@@ -91,7 +93,8 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
     Args:
         args (tuple[int, pd.DataFrame]): _,dataframe of sequences
 
-    Returns:
+    Returns
+    -------
         pd.Dataframe: Dataframe with mutation counts.
     """
     _, df = args
@@ -113,7 +116,8 @@ def preprocess(
         silent (bool, optional): Do not show progress bar if true. Defaults to False.
         threads (int, optional): Number of cpus on which to run code, defaults to 1.
 
-    Returns:
+    Returns
+    -------
         pd.Dataframe: processed dataframe.
     """
     df = dataframe.copy()
@@ -160,7 +164,8 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     Args:
         df (pd.DataFrame): Processed dataframe of sequences.
 
-    Returns:
+    Returns
+    -------
         pd.DataFrame: Dataframe with classes.
     """
     classes = (
@@ -186,7 +191,8 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
         dataframe (pd.DataFrame): Dataframe to save.
         save_path (Path): Where to save the dataframe.
 
-    Raises:
+    Raises
+    ------
         ValueError: save_path suffix not supported.
     """
     suffix = save_path.suffix
@@ -212,10 +218,12 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
         input_path (Path):Path of input file.
         config (Path): Json configuration file to change column names of your custom sequence file.
 
-    Raises:
+    Raises
+    ------
         ValueError: Format of input file is not supported.
 
-    Returns:
+    Returns
+    -------
         pd.DataFrame: Pandas dataframe.
     """
     suffix = input_path.suffix
@@ -254,7 +262,8 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
         df (pd.DataFrame): dataframe to evaluate
         partition (str): name of column corresponding to inferred partition.
 
-    Returns:
+    Returns
+    -------
         (precision,sensitivity)
     """
     if "ground_truth" not in df.columns:
@@ -280,7 +289,7 @@ def pRequired(rho, pi=0.99):
 
 
 def get_logger(verbose, use_json):
-    if verbose >= 2:  # noqa: PLR2004
+    if verbose >= 2:
         logging_level = logging.DEBUG
     elif verbose == 1:
         logging_level = logging.INFO

@@ -42,7 +42,8 @@ class CDR3Clustering:
             args (Tuple[Tuple[str, str, int], pd.DataFrame]): (Vgene,Jgene,l), Dataframe
             of sequences grouped by V,J,l class.
 
-        Returns:
+        Returns
+        -------
             pd.Series: Cluster labels for this V,J,l class.
         """
         (v, j, l), df = args
@@ -75,7 +76,8 @@ class CDR3Clustering:
             Defaults to ["v_gene", "j_gene", "cdr3_length"].
             silent (bool,optional) : Do not show progress bar if True.
 
-        Returns:
+        Returns
+        -------
             pd.Series: Series with cluster labels.
         """
         use = group + ["cdr3"]
@@ -130,7 +132,8 @@ class DistanceMatrix:
             from germline, index) for sequence 1
             arg2 (Tuple[str,str,int,int]): Same for sequence 2
 
-        Returns:
+        Returns
+        -------
             float: Difference between two quantities.
         """
         cdr31, s1, n1, i1 = arg1
@@ -159,7 +162,8 @@ class DistanceMatrix:
         Args:
             start (int): Index from which to compute distances.
 
-        Returns:
+        Returns
+        -------
             Tuple[int, int, list[float]]: Start index, End index, distance for indices inbetween
         """
         dist = []
@@ -183,7 +187,8 @@ class DistanceMatrix:
     def compute(self) -> np.ndarray:
         """Run self.proc parallely to compute 1D distance matrix.
 
-        Returns:
+        Returns
+        -------
             np.array: 1D distance matrix
         """
         dist = np.zeros(self.k_max)
@@ -249,10 +254,7 @@ class HILARy:
         n0s = np.random.poisson(lam=exp_n0, size=size)
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
-
         cdf = return_cdf(self.classes, self.cdfs, class_id)
-        # cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1] ### I don't like this one here.
-
         pn = np.diff(cdf, prepend=[0], append=[1])
         ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
         nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
@@ -329,7 +331,8 @@ class HILARy:
             dist (np.ndarray): Distances between precise clusters.
             threshold (float): Threshold to merge two precise clusters if the distance is smaller.
 
-        Returns:
+        Returns
+        -------
             dict: Dictionary mapping precise clusters to their new clusters.
         """
         clusters = fcluster(
@@ -349,7 +352,8 @@ class HILARy:
             args (Tuple[Tuple[str,str,int,int],pd.DataFrame]): (Vgene,Jgene,cdr3length),dataframe
             representing sensitive cluster.
 
-        Returns:
+        Returns
+        -------
             pd.Series: New clusters made of grouped precise clusters.
         """
         df = args[1]  # (vgene, jgene, cdr3length, sensitive cluster), df
@@ -398,7 +402,8 @@ class HILARy:
         Args:
             df(pd.DataFrame):Dataframe of sequences.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame with sensitive and precise clusters.
         """
         prec = CDR3Clustering(
@@ -423,7 +428,8 @@ class HILARy:
         Args:
             df(pd.DataFrame):Dataframe of sequences.
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame with sensitive and precise clusters.
         """
         if fixed_threshold >= 0:
@@ -444,7 +450,8 @@ class HILARy:
         Args:
             df (pd.DataFrame): Dataframe grouped representing given cluster.
 
-        Returns:
+        Returns
+        -------
             pd.Series: Series flagging all indices of given cluster.
         """
         df["to_resolve"] = True
@@ -462,7 +469,8 @@ class HILARy:
             size_threshold (int, optional): Threshold to separate big and small clusters.
             Defaults to 1e3.
 
-        Returns:
+        Returns
+        -------
             Tuple[pd.DataFrame,pd.DataFrame]: Returns indices of small and big sensitive clusters.
         """
         df["to_resolve"] = False
@@ -496,7 +504,8 @@ class HILARy:
         Args:
             df(pd.DataFrame):Dataframe of sequences.
 
-        Returns:
+        Returns
+        -------
             df(pd.DataFrame): Dataframe with inferred clonal families in 'clone_id'.
         """
         df, small_to_do, large_to_do = self.to_do(df)

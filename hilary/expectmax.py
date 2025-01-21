@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 from scipy.special import factorial
 
 # pylint: disable=invalid-name
@@ -40,7 +39,8 @@ class EM:
     def readNull(self) -> np.ndarray:
         """Read estimated null distribution.
 
-        Returns:
+        Returns
+        -------
             np.ndarray: Histogram of null distributions (Ppost).
         """
         # cdf = self.cdfs.loc[self.cdfs["l"] == self.l].values[0, 1 : self.l + 1]
@@ -51,7 +51,9 @@ class EM:
 
         Args:
             theta (tuple(float, float)): (Prevalence,mu)
-        Returns:
+
+        Returns
+        -------
             tuple(float,float):P1 and P0 computed with updated prevalence and mu.
         """
         rho, mu = theta
@@ -68,7 +70,8 @@ class EM:
         Args:
             theta (tuple(float, float)): Prevalence,mu
 
-        Returns:
+        Returns
+        -------
             tuple(float,float):Updated prevalence and mu.
         """
         P1, P0 = self.discreteExpectation(theta)
@@ -80,7 +83,8 @@ class EM:
     def discreteEM(self) -> tuple[float, float]:
         """Estimate theta=(prevalence,mu).
 
-        Returns:
+        Returns
+        -------
             tuple(float,float):Fitted prevalence and mu.
         """
         mu = 0.02 * self.l
@@ -100,7 +104,8 @@ class EM:
 
     def error(self, theta):
         """Estimate goodness of fit
-        By default returns rescaled root MSE"""
+        By default returns rescaled root MSE
+        """
         y1 = self.h / sum(self.h)
         y2 = self.discreteMix(self.b, theta)
         mask = self.b < 0.2 * self.l

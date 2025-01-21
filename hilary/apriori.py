@@ -14,7 +14,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, preprocess, pRequired, return_cdf
+from hilary.utils import applyParallel, preprocess, return_cdf
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -63,7 +63,7 @@ class Apriori:
         if not paired:
             if model=='vjl':
                 self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path(f"cdfs_human_vjl.csv.gz"), 
+                Path(os.path.dirname(__file__)) / Path("cdfs_human_vjl.csv.gz"),
             )
             else:
                 self.cdfs = pd.read_csv(
@@ -84,7 +84,9 @@ class Apriori:
         Args:
             df (pd.DataFrame): dataframe of heavy chain sequences.
             df_kappa (pd.DataFrame): dataframe of light chain sequences.
-        Returns:
+
+        Returns
+        -------
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
         df = preprocess(
@@ -126,7 +128,9 @@ class Apriori:
 
         Args:
             df(pd.DataFrame): Dataframe of sequences.
-        Returns:
+
+        Returns
+        -------
             pd.DataFrame: Histogram of distances for large VJl classes.
         """
         query = "v_gene != 'None' and pair_count >0 and cdr3_length in @self.lengths"
@@ -156,7 +160,9 @@ class Apriori:
 
         Args:
             df(pd.DataFrame) : Dataframe of sequences.
-        Returns:
+
+        Returns
+        -------
             pd.DataFrame: Histogram of distances for all large classes.
         """
         hs_vjl = self.compute_allvjl(df)
@@ -171,7 +177,8 @@ class Apriori:
         Args:
             args tuple[int, pd.DataFrame]: class_id, histogram for that class
 
-        Returns:
+        Returns
+        -------
             pd.DataFrame: dataframe with parameters for each class id.
         """
         class_id, h = args
@@ -241,7 +248,9 @@ class Apriori:
 
         Args:
             args tuple[tuple[int],pd.DataFrame]: length, dataframe grouped by length.
-        Returns:
+
+        Returns
+        -------
             pd.DataFrame: Precise and sensitive thresholds.
         """
         tuple_l, ldf = args
