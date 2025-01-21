@@ -31,7 +31,7 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        model: int = 326713,
+        model: str = 'vjl',
         silent: bool = False,
         paired: bool = False,
     ):
@@ -61,9 +61,14 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         if not paired:
-            self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
+            if model=='vjl':
+                self.cdfs = pd.read_csv(
+                Path(os.path.dirname(__file__)) / Path(f"cdfs_human_vjl.csv.gz"), 
             )
+            else:
+                self.cdfs = pd.read_csv(
+                    Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
+                )
         else:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),

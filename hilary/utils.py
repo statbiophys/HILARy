@@ -33,14 +33,25 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.a
         np.array: array encoding the cdf
     """
     l = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
-    if "j_gene" in cdfs.columns:
+    if "v_gene" in cdfs.columns and "j_gene" in cdfs.columns:  ## use vjl cdf
+        j = classes.loc[classes.class_id == class_id].j_gene.values[0]
+        v = classes.loc[classes.class_id == class_id].v_gene.values[0]
+        sel1 = np.logical_and(cdfs["cdr3_length"] == l, cdfs["j_gene"] == j)
+        sel = np.logical_and(sel1,cdfs["v_gene"] == v)
+        if sum(sel) > 0:
+            cdf = cdfs.loc[sel].values[0, 3 : l + 3]  ## found vjl cdf
+        elif sum(sel1) > 0:
+            cdf = cdfs.loc[sel1].values[0, 3 : l + 3]  ## found jl cdf
+        else:
+            cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 3 : l + 3]
+    elif "j_gene" in cdfs.columns: ## use jl cdf
         j = classes.loc[classes.class_id == class_id].j_gene.values[0]
         sel = np.logical_and(cdfs["cdr3_length"] == l, cdfs["j_gene"] == j)
         if sum(sel) > 0:
             cdf = cdfs.loc[sel].values[0, 2 : l + 2]  ## found jl cdf
         else:
             cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 2 : l + 2]
-    else:
+    else: ## use l cdf
         cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
     return cdf
 
