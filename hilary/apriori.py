@@ -217,6 +217,9 @@ class Apriori:
             raise ValueError(
                 msg,
             )
+        log.debug(
+            "Computing prevalence and mean distance for all classes",
+        )
         parameters = applyParallel(
             self.histograms.groupby(["class_id"]),
             self.estimate,
@@ -286,6 +289,9 @@ class Apriori:
 
     def get_thresholds(self) -> None:
         """Assign thresholds using null distribution from model."""
+        log.debug(
+            "Assign thresholds using null distribution from model.",
+        )
         self.classes[["precise_threshold", "sensitive_threshold"]] = applyParallel(
             self.classes.groupby(["cdr3_length"]),
             self.assign_precise_sensitive_thresholds,

@@ -26,7 +26,24 @@ log = structlog.get_logger()
 
 
 class CDR3Clustering:
-    """Infer families using CDR3 length and thresholds computed by Apriori class."""
+    """
+    A class to infer families using CDR3 length and thresholds computed by the Apriori class.
+    
+    Attributes
+    ----------
+    thresholds : pd.DataFrame
+        Dataframe containing thresholds for each (V, J, l) class.
+    threads : int
+        Number of CPUs on which to run the code, defaults to 1.
+    
+    Methods
+    -------
+    cluster(args: tuple[tuple[str, str, int], pd.DataFrame]) -> pd.Series
+        Returns cluster labels depending on thresholds in self.thresholds.
+    infer(df: pd.DataFrame, group: list[str] | None = None, silent: bool = False) -> pd.Series
+        Returns cluster labels depending on thresholds in self.thresholds.
+        Runs self.cluster in parallel on dataframe grouped by 'group' argument.
+    """
 
     def __init__(self, thresholds: pd.DataFrame, threads: int = 1) -> None:
         """Initialize thresholds.
@@ -86,6 +103,8 @@ class CDR3Clustering:
         if group is None:
             group = ["v_gene", "j_gene", "cdr3_length"]
         use = group + ["cdr3"]
+        log.debug("Inferring clusters.", group=group)
+
         df["cluster"] = applyParallel(
             df[use].groupby(group),
             self.cluster,
@@ -97,7 +116,35 @@ class CDR3Clustering:
 
 
 class DistanceMatrix:
-    """Object enabling parallel computing of the distance martrix of a large cluster."""
+    """
+    Object enabling parallel computing of the distance matrix of a large cluster.
+
+    Attributes:
+    ----------
+        threads (int): Number of CPUs on which to run code.
+        l (int): CDR3 length.
+        L (int): Length of the Vgene + Jgene.
+        l_L (float): Ratio of CDR3 length to alignment length.
+        l_L_L (float): Ratio of sum of CDR3 length and alignment length to alignment length.
+        data (np.ndarray): Array of sequences grouped by (v, j, l, sensitive cluster).
+        n (int): Number of sequences.
+        k_max (int): Maximum elements in 1D distance array.
+        k_step (int): Step size for processing distance matrix in chunks.
+
+    Methods:
+    -------
+        __init__(l: int, alignment_length: int, df: pd.DataFrame, threads: int = 1) -> None:
+            Initialize attributes.
+
+        metric(arg1: tuple[str, str, int, int], arg2: tuple[str, str, int, int]) -> float:
+            Compute difference between normalized CDR3 divergence & shared mutations of two sequences.
+
+        proc(start: int) -> tuple[int, int, list[float]]:
+            Compute 1D distance matrix between start and start+self.k_step.
+
+        compute() -> np.ndarray:
+            Run self.proc in parallel to compute 1D distance matrix.
+    """
 
     def __init__(
         self,
@@ -207,7 +254,31 @@ class DistanceMatrix:
 
 
 class HILARy:
-    """Infer families using CDR3 and mutation information."""
+    """Infer families using CDR3 and mutation information.
+    
+    Methods
+    -------
+    __init__(apriori: Apriori, df, crude: bool = False) -> None
+        Initialize Hilary attributes using Apriori object.
+    simulate_xs_ys(args) -> tuple
+        Simulate xs and ys values for given arguments.
+    get_xy_thresholds(df: pd.DataFrame) -> None
+        Compute xy_thresholds for each (v_gene, j_gene, cdr3_length) class.
+    singleLinkage(indices: np.ndarray, dist: np.ndarray, threshold: float) -> dict[int, int]
+        Map precise clusters to new precise AND sensitive clusters by merging clusters together.
+    class2pairs(args: tuple[tuple[str, str, int, int], pd.DataFrame]) -> pd.Series
+        Group precise clusters together.
+    compute_prec_sens_clusters(df: pd.DataFrame) -> pd.DataFrame
+        Infer precise and sensitive clusters.
+    compute_crude_method_clusters(df: pd.DataFrame, normalized_threshold: float = 0.2, fixed_threshold: int = -1) -> pd.DataFrame
+        Infer precise and sensitive clusters using crude method.
+    mark_class(df: pd.DataFrame) -> pd.Series
+        Flag all indices of a sensitive cluster not reaching desired sensitivity.
+    to_do(df: pd.DataFrame, size_threshold: int = 500) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
+    infer(df: pd.DataFrame) -> pd.DataFrame
+        Infer family clusters.
+    """
 
     def __init__(self, apriori: Apriori, df, crude: bool = False) -> None:
         """Initialize Hilary attributes using Apriori object.
@@ -243,6 +314,25 @@ class HILARy:
         self,
         args,
     ):
+        """
+        Simulates xs and ys values based on the given arguments.
+        
+        Args:
+            args (tuple): A tuple containing the following elements:
+                - _: Unused argument.
+                - _: Unused argument.
+                - l (int): Length parameter.
+                - prevalence (float): Prevalence parameter.
+                - mutations (list): List of mutation counts.
+                - alignment_length (int): Length of the alignment.
+                - class_id (int): Identifier for the class.
+        
+        Returns:
+        -------
+            tuple: A tuple containing:
+                - float: The sorted zs value at the required prevalence percentile.
+                - int: The class identifier.
+        """
         size = int(1e6)
         (_, _, l, prevalence, mutations, alignment_length, class_id) = args
         l = int(l)
@@ -273,9 +363,21 @@ class HILARy:
         )
 
     def get_xy_thresholds(self, df) -> None:
+        """Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.
+        
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+        
+        Returns
+        -------
+            None
+        """
         alignment_length = len(df["alt_sequence_alignment"].values[0])
         mutations_grouped = []
         # we should parallelize this for loop, it is currently a bottleneck on my side
+        log.debug(
+            "Group mutations by (v_gene,j_gene,cdr3_length) and compute xy_thresholds.",
+        )
         for (
             v_gene,
             j_gene,
@@ -310,7 +412,9 @@ class HILARy:
                     class_id,
                 )
             )
-
+        log.debug(
+            "Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.",
+        )
         result = applyParallel(
             mutations_grouped,
             self.simulate_xs_ys,
@@ -483,6 +587,7 @@ class HILARy:
         if self.remaining.empty:
             log.info("No classes passed to xy method.")
         else:
+            log.debug("Marking classes to resolve.")
             df["to_resolve"] = applyParallel(
                 [df.groupby(self.group).get_group(g) for g in self.remaining],
                 self.mark_class,
