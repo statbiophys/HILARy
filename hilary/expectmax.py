@@ -23,7 +23,7 @@ class EM:
         """Initialize class.
 
         Args:
-            cdfs (pd.DataFrame): P0 distribution.
+            cdf (np.array): P0 distribution.
             l (float): cdr3 length
             h (np.ndarray): histogram of pairwise distances.
             howmany (int, optional): Hopw many iterations to run for expectmax algo. Defaults to 10.

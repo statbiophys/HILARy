@@ -12,13 +12,7 @@ import typer
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
-from hilary.utils import (
-    create_classes,
-    get_logger,
-    pairwise_evaluation,
-    read_input,
-    save_dataframe,
-)
+from hilary.utils import create_classes, get_logger, pairwise_evaluation, read_input, save_dataframe
 
 app = typer.Typer(add_completion=False)
 
@@ -110,9 +104,7 @@ def crude_method(
     if kappa_file:
         log.info("USING PAIRED OPTION.")
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
-        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip(
-            "-igk"
-        )
+        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
         dataframe_kappa.set_index("sequence_id")
         lengths = np.arange(57, 144 + 3, 3).astype(int)
         paired = True
@@ -153,9 +145,7 @@ def crude_method(
     if paired:
         dataframe_kappa["clone_id"] = dataframe_crude["crude_method_family"]
         dataframe_kappa["sequence_id"] = dataframe["sequence_id"] + "-igk"
-        output_path_kappa = result_folder / Path(
-            f"inferred_crude_method_{kappa_file.name}"
-        )
+        output_path_kappa = result_folder / Path(f"inferred_crude_method_{kappa_file.name}")
         log.info(
             "💾 SAVING RESULTS FOR KAPPA FILE",
             output_path=output_path_kappa.as_posix(),
@@ -163,9 +153,7 @@ def crude_method(
         save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
 
     if verbose >= 2 and "ground_truth" in dataframe.columns:
-        precision, sensitivity = pairwise_evaluation(
-            df=dataframe, partition="clone_id"
-        )
+        precision, sensitivity = pairwise_evaluation(df=dataframe, partition="clone_id")
         log.debug(
             "Evaluating Hilary's performance on ground truth column 'ground_truth'.",
             precision_crude=precision,
@@ -237,7 +225,7 @@ def cdr3_method(
         help="Print logs as JSON or text.",
     ),
     saving: bool = True,
-) -> tuple[pd.DataFrame, pd.DataFrame,pd.DataFrame,Any]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Any]:
     """Infer lineages with HILARy-CDR3 from data_path excel file."""
     if result_folder is None:
         result_folder = data_path.parents[0] / Path("hilary_results/")
@@ -266,9 +254,7 @@ def cdr3_method(
     if kappa_file:
         log.info("USING PAIRED OPTION.")
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
-        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip(
-            "-igk"
-        )
+        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
         dataframe_kappa.set_index("sequence_id")
         lengths = np.arange(57, 144 + 3, 3).astype(int)
         paired = True
@@ -319,9 +305,7 @@ def cdr3_method(
     dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
 
     if verbose >= 2 and "ground_truth" in dataframe.columns:
-        precision, sensitivity = pairwise_evaluation(
-            df=dataframe, partition="cdr3_based_family"
-        )
+        precision, sensitivity = pairwise_evaluation(df=dataframe, partition="cdr3_based_family")
         log.debug(
             "Evaluating Hilary's performance on ground truth column 'ground_truth'.",
             precision_cdr3=precision,
@@ -329,23 +313,19 @@ def cdr3_method(
         )
 
     if saving:
-        dataframe.rename(columns={"cdr3_based_family":"clone_id"}, inplace=True)
+        dataframe.rename(columns={"cdr3_based_family": "clone_id"}, inplace=True)
         log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
         output_path = result_folder / Path(f"inferred_cdr3_based_{data_path.name}")
         save_dataframe(dataframe=dataframe, save_path=output_path)
         if paired:
             dataframe_kappa["clone_id"] = dataframe_cdr3["precise_cluster"]
             dataframe_kappa["sequence_id"] = dataframe["sequence_id"] + "-igk"
-            output_path_kappa = result_folder / Path(
-                f"inferred_cdr3_based_{kappa_file.name}"
-            )
+            output_path_kappa = result_folder / Path(f"inferred_cdr3_based_{kappa_file.name}")
             log.info(
                 "💾 SAVING RESULTS FOR KAPPA FILE",
                 output_path=output_path_kappa.as_posix(),
             )
             save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
-
-
 
     return dataframe_cdr3, dataframe, dataframe_kappa, hilary
 
@@ -470,23 +450,20 @@ def full_method(
 
     if dataframe_kappa is not None:
         dataframe_kappa["clone_id"] = dataframe_inferred["clone_id"]
-        output_path_kappa = result_folder / Path(
-            f"inferred_full_method_{kappa_file.name}"
-        )
+        output_path_kappa = result_folder / Path(f"inferred_full_method_{kappa_file.name}")
         log.info(
             "💾 SAVING RESULTS FOR KAPPA FILE",
             output_path=output_path_kappa.as_posix(),
         )
         save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
     if verbose >= 2 and "ground_truth" in dataframe.columns:
-        precision_full, sensitivity_full = pairwise_evaluation(
-            df=dataframe, partition="clone_id"
-        )
+        precision_full, sensitivity_full = pairwise_evaluation(df=dataframe, partition="clone_id")
         log.debug(
             "Evaluating Hilary's performance on ground truth column 'ground_truth'.",
             precision_full_method=precision_full,
             sensitivity_full_method=sensitivity_full,
         )
+
 
 if __name__ == "__main__":
     app()

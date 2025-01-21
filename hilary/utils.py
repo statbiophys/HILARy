@@ -14,11 +14,35 @@ import structlog
 from scipy.special import binom
 from textdistance import hamming
 from tqdm import tqdm
-
+import numpy as np
 log = structlog.get_logger(__name__)
 
 # pylint: disable=invalid-name
 
+def return_cdf(
+    classes:pd.DataFrame,
+    cdfs:pd.DataFrame,
+    class_id: int
+) -> np.array:
+    """Class to extract the right cdf
+    
+    Args:
+        classes (pd.DataFrame): classes df (see apriori)
+        cdfs (pd.DataFrame): cdfs object (see apriori)
+        class_id (int): id of the class to return
+    
+    Returns:
+        np.array: array encoding the cdf
+    """
+    l = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
+    if 'j_gene' in cdfs.columns:
+        j= classes.loc[classes.class_id == class_id].j_gene.values[0]
+        sel=np.logical_and(cdfs["cdr3_length"] == l,cdfs["j_gene"] == j)
+        if sum(sel)>0: cdf = cdfs.loc[sel].values[0, 1 : l + 1] ## found jl cdf
+        else: cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+    else:
+        cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+    return cdf
 
 def applyParallel(
     dfGrouped: list,
@@ -103,15 +127,11 @@ def preprocess(
     df["cdr3_length"] = df["cdr3"].str.len()
     if "alt_sequence_alignment" not in df.columns:
         df.dropna(subset=["v_sequence_alignment", "j_sequence_alignment"], inplace=True)
-        df["alt_sequence_alignment"] = (
-            df["v_sequence_alignment"] + df["j_sequence_alignment"]
-        )
+        df["alt_sequence_alignment"] = df["v_sequence_alignment"] + df["j_sequence_alignment"]
 
     if "alt_germline_alignment" not in df.columns:
         df.dropna(subset=["v_germline_alignment", "j_germline_alignment"], inplace=True)
-        df["alt_germline_alignment"] = (
-            df["v_germline_alignment"] + df["j_germline_alignment"]
-        )
+        df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
 
     df["mutation_count"] = applyParallel(
         df.groupby(["v_gene", "j_gene", "cdr3_length"]),
@@ -132,18 +152,10 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
         pd.DataFrame: Dataframe with classes.
     """
     classes = (
-        df.groupby(["v_gene", "j_gene", "cdr3_length"])
-        .size()
-        .to_frame("sequence_count")
+        df.groupby(["v_gene", "j_gene", "cdr3_length"]).size().to_frame("sequence_count")
     ).reset_index()
-    classes["pair_count"] = (
-        classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
-    )
-    l_classes = (
-        classes.groupby("cdr3_length")[["sequence_count", "pair_count"]]
-        .sum()
-        .reset_index()
-    )
+    classes["pair_count"] = classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
+    l_classes = classes.groupby("cdr3_length")[["sequence_count", "pair_count"]].sum().reset_index()
     l_classes["v_gene"] = "None"
     l_classes["j_gene"] = "None"
     classes = pd.concat([classes, l_classes], ignore_index=True).sort_values(

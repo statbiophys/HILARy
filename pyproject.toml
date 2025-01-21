@@ -1,10 +1,8 @@
 [tool.setuptools]
 include-package-data = true
-
 [build-system]
 requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
-
 [project]
 name = "hilary"
 version = "1.2.3"
@@ -21,8 +19,10 @@ dependencies = [
         "atriegc>=0.0.3,<1.0.0",
         "scipy>1.11,<2",
 ]
-authors = [ {name = "Natanael Spisak", email = "natanael.spisak@gmail.com"}, {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
-maintainers = [{name = "Natanael Spisak", email = "natanael.spisak@gmail.com"}, {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
+authors = [{name = "Natanael Spisak", email = "natanael.spisak@gmail.com"}, 
+           {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
+maintainers = [{name = "Natanael Spisak", email = "natanael.spisak@gmail.com"}, 
+               {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
 description = ''
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -39,22 +39,12 @@ classifiers=[
             'Programming Language :: Python :: 3.9',
             'Programming Language :: Python :: 3.10',
             'Programming Language :: Python :: 3.11',
-            'Programming Language :: Python :: 3.12',
-            ]
-             
+            'Programming Language :: Python :: 3.12']
 [project.urls]
 Homepage = "https://github.com/statbiophys/hilary"
 #Documentation = "https://sonnia.readthedocs.io/en/latest/index.html"
-
 [project.scripts]
 infer-lineages='hilary.__main__:app'
-#sonnia-generate='sonnia.generate:main'
-#sonnia-evaluate='sonnia.evaluate:main'
-
-#exclude = [
-#  "data_with_scripts/",
-#]
-
 [tool.setuptools.packages.find]
 include = ["hilary*"]
 exclude=["data_with_scripts*"]

@@ -15,7 +15,7 @@ from textdistance import hamming
 from tqdm import tqdm
 
 from hilary.apriori import Apriori
-from hilary.utils import applyParallel, pRequired
+from hilary.utils import applyParallel, pRequired,return_cdf
 
 # pylint: disable=invalid-name
 
@@ -168,16 +168,10 @@ class DistanceMatrix:
         for k in range(k1, k2):
             # get (i, j) for 2D distance matrix knowing (k) for 1D distance matrix
             i = int(
-                self.n
-                - 2
-                - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
+                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
             )
             j = int(
-                k
-                + i
-                + 1
-                - self.n * (self.n - 1) / 2
-                + (self.n - i) * ((self.n - i) - 1) / 2,
+                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2,
             )
             # store distance
             a = self.data[i, :]
@@ -256,11 +250,11 @@ class HILARy:
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
 
-        cdf = self.cdfs.loc[self.cdfs["l"] == l].values[0, 1 : l + 1]
+        cdf=return_cdf(self.classes,self.cdfs,class_id)
+        #cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1] ### I don't like this one here.
+        
         pn = np.diff(cdf, prepend=[0], append=[1])
-        ns = np.random.choice(
-            np.arange(l + 1), size=size, replace=True, p=pn / pn.sum()
-        )
+        ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
         nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
         exp_n = (l / alignment_length) * (nLs + 1)
         std_n = np.sqrt(exp_n * (l + alignment_length) / alignment_length)
@@ -317,9 +311,9 @@ class HILARy:
             isint=True,
         )
 
-        thresholds_data = pd.DataFrame(
-            result, columns=["xy_threshold", "class_id"]
-        ).set_index("class_id")
+        thresholds_data = pd.DataFrame(result, columns=["xy_threshold", "class_id"]).set_index(
+            "class_id"
+        )
         self.classes["xy_threshold"] = thresholds_data["xy_threshold"]
 
     def singleLinkage(
@@ -374,9 +368,7 @@ class HILARy:
         distanceMatrix = np.ones((dim, dim), dtype=float) * (2 * self.alignment_length)
         for i in range(dim):
             distanceMatrix[i, i] = 0
-        for (cdr31, s1, n1, i1), (cdr32, s2, n2, i2) in combinations(
-            df[self.use].values, 2
-        ):
+        for (cdr31, s1, n1, i1), (cdr32, s2, n2, i2) in combinations(df[self.use].values, 2):
             if i1 != i2:
                 n1n2 = n1 * n2
                 if n1n2 > 0:
@@ -385,9 +377,7 @@ class HILARy:
                     n0 = (n1 + n2 - nL) / 2
 
                     exp_n = l / self.alignment_length * (nL + 1)
-                    std_n = np.sqrt(
-                        exp_n * (l + self.alignment_length) / self.alignment_length
-                    )
+                    std_n = np.sqrt(exp_n * (l + self.alignment_length) / self.alignment_length)
                     exp_n0 = n1n2 / self.alignment_length
                     std_n0 = np.sqrt(exp_n0)
                     x = (n - exp_n) / std_n
@@ -440,15 +430,11 @@ class HILARy:
             log.info(f"Using crude method with a fixed threshold of {fixed_threshold}")
             self.classes["threshold"] = fixed_threshold
         else:
-            log.info(
-                f"Using crude method with a normalized threshold of {normalized_threshold}"
+            log.info(f"Using crude method with a normalized threshold of {normalized_threshold}")
+            self.classes["threshold"] = (self.classes["cdr3_length"] * normalized_threshold).astype(
+                int
             )
-            self.classes["threshold"] = (
-                self.classes["cdr3_length"] * normalized_threshold
-            ).astype(int)
-        prec = CDR3Clustering(
-            self.classes[self.group + ["threshold"]], threads=self.threads
-        )
+        prec = CDR3Clustering(self.classes[self.group + ["threshold"]], threads=self.threads)
         df["crude_method_family"] = prec.infer(df, silent=self.silent)
         return df
 
@@ -563,9 +549,7 @@ class HILARy:
             large_dict.update(dct)
 
         df["new_index"] = df.index
-        df["family_cluster"] = df["family_cluster"].fillna(
-            df["new_index"].map(large_dict)
-        )
+        df["family_cluster"] = df["family_cluster"].fillna(df["new_index"].map(large_dict))
         df.fillna(value={"family_cluster": 0}, inplace=True)
         df["clone_id"] = (
             df.groupby(

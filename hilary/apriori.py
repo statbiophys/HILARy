@@ -14,7 +14,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, preprocess, pRequired
+from hilary.utils import applyParallel, preprocess, pRequired, return_cdf
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -171,13 +171,8 @@ class Apriori:
         """
         class_id, h = args
         l = self.classes.loc[self.classes.class_id == class_id].cdr3_length.values[0]
-        if 'j_gene' in self.cdfs.columns:
-            j= self.classes.loc[self.classes.class_id == class_id].j_gene.values[0]
-            sel=np.logical_and(self.cdfs["cdr3_length"] == l,self.cdfs["j_gene"] == j)
-            if sum(sel)>0: cdf = self.cdfs.loc[sel].values[0, 1 : l + 1] ## found jl cdf
-            else: cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
-        else:
-            cdf = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+
+        cdf=return_cdf(self.classes,self.cdfs,class_id)
         em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="geometric")
         rho_geo, mu_geo = em.discreteEM()
         error_geo = em.error([rho_geo, mu_geo])
