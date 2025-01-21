@@ -1,0 +1,19 @@
+#!/bin/bash
+#usage mixcrExportFotHILARy cloneset.clns cloneset.tsv
+#Run after mixcr analyze AND (!!!) mixcr findAlleles
+
+RED='\033[1;31m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+echo -e "${CYAN}Run after mixcr analyze AND ${RED}mixcr findAlleles${CYAN}"
+
+echo -e "cloneId\tv_call\tj_call\tjunction\tv_sequence_alignment\tj_sequence_alignment\tv_germline_alignment\tj_germline_alignment"  > $2
+
+mixcr exportClones --drop-default-fields --no-header -t -o \
+                   -cloneId -vHit -jHit -nFeature "{CDR3Begin(+3):CDR3End(-3)}" \
+                   -nFeatureImputed "{FR1Begin:FR3End(+3)}"   \
+                   -nFeatureImputed "{FR4Begin(-3):FR4End}" \
+                   -nFeature "{FR1Begin:FR3End(+3)}" germline  \
+                   -nFeature "{FR4Begin(-3):FR4End}" germline  \
+                   $1 |grep -v 'region_not_covered' >> $2
