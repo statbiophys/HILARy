@@ -28,14 +28,14 @@ log = structlog.get_logger()
 class CDR3Clustering:
     """
     A class to infer families using CDR3 length and thresholds computed by the Apriori class.
-    
+
     Attributes
     ----------
     thresholds : pd.DataFrame
         Dataframe containing thresholds for each (V, J, l) class.
     threads : int
         Number of CPUs on which to run the code, defaults to 1.
-    
+
     Methods
     -------
     cluster(args: tuple[tuple[str, str, int], pd.DataFrame]) -> pd.Series
@@ -119,7 +119,7 @@ class DistanceMatrix:
     """
     Object enabling parallel computing of the distance matrix of a large cluster.
 
-    Attributes:
+    Attributes
     ----------
         threads (int): Number of CPUs on which to run code.
         l (int): CDR3 length.
@@ -131,7 +131,7 @@ class DistanceMatrix:
         k_max (int): Maximum elements in 1D distance array.
         k_step (int): Step size for processing distance matrix in chunks.
 
-    Methods:
+    Methods
     -------
         __init__(l: int, alignment_length: int, df: pd.DataFrame, threads: int = 1) -> None:
             Initialize attributes.
@@ -255,7 +255,7 @@ class DistanceMatrix:
 
 class HILARy:
     """Infer families using CDR3 and mutation information.
-    
+
     Methods
     -------
     __init__(apriori: Apriori, df, crude: bool = False) -> None
@@ -316,7 +316,7 @@ class HILARy:
     ):
         """
         Simulates xs and ys values based on the given arguments.
-        
+
         Args:
             args (tuple): A tuple containing the following elements:
                 - _: Unused argument.
@@ -326,8 +326,8 @@ class HILARy:
                 - mutations (list): List of mutation counts.
                 - alignment_length (int): Length of the alignment.
                 - class_id (int): Identifier for the class.
-        
-        Returns:
+
+        Returns
         -------
             tuple: A tuple containing:
                 - float: The sorted zs value at the required prevalence percentile.
@@ -364,10 +364,10 @@ class HILARy:
 
     def get_xy_thresholds(self, df) -> None:
         """Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.
-        
+
         Args:
             df(pd.DataFrame):Dataframe of sequences.
-        
+
         Returns
         -------
             None
