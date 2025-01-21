@@ -34,7 +34,7 @@ class Apriori:
         model: str = 'vjl',
         silent: bool = False,
         paired: bool = False,
-    ):
+    ) -> None:
         """Initialize attributes to later run class methods.
 
         Args:
@@ -213,8 +213,9 @@ class Apriori:
     def get_parameters(self) -> None:
         """Compute prevalence and mean distance for all classes."""
         if self.histograms is None:
+            msg = "Histogram attribute is None. Please run get_histograms method."
             raise ValueError(
-                "Histogram attribute is None. Please run get_histograms method.",
+                msg,
             )
         parameters = applyParallel(
             self.histograms.groupby(["class_id"]),

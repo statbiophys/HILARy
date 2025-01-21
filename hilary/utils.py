@@ -6,8 +6,7 @@ import json
 import logging
 from itertools import combinations
 from multiprocessing import Pool
-from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import pandas as pd
@@ -16,13 +15,16 @@ from scipy.special import binom
 from textdistance import hamming
 from tqdm import tqdm
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 log = structlog.get_logger(__name__)
 
 # pylint: disable=invalid-name
 
 
 def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.array:
-    """Class to extract the right cdf
+    """Class to extract the right cdf.
 
     Args:
         classes (pd.DataFrame): classes df (see apriori)
@@ -184,7 +186,7 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     return classes
 
 
-def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
+def save_dataframe(dataframe: pd.DataFrame, save_path: Path) -> None:
     """Save dataframe depending on suffix.
 
     Args:
@@ -208,7 +210,8 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path):
                 save_path.with_suffix(""),
             )
     else:
-        raise ValueError(f"Format {suffix} not supported.")
+        msg = f"Format {suffix} not supported."
+        raise ValueError(msg)
 
 
 def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
@@ -244,8 +247,9 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
                 input_path,
             )
     else:
+        msg = f"Format {suffix} not supported. Extensions supported are tsv, xlsx, csv, csv.gz"
         raise ValueError(
-            f"Format {suffix} not supported. Extensions supported are tsv, xlsx, csv, csv.gz",
+            msg,
         )
     if config:
         with open(config, encoding="utf-8") as user_file:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from itertools import combinations
 from multiprocessing import Pool
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -14,8 +15,10 @@ from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.apriori import Apriori
 from hilary.utils import applyParallel, pRequired, return_cdf
+
+if TYPE_CHECKING:
+    from hilary.apriori import Apriori
 
 # pylint: disable=invalid-name
 
@@ -63,7 +66,7 @@ class CDR3Clustering:
     def infer(
         self,
         df: pd.DataFrame,
-        group: list[str] = ["v_gene", "j_gene", "cdr3_length"],
+        group: list[str] | None = None,
         silent: bool = False,
     ) -> pd.Series:
         """Return cluster labels depending of thresholds in self.thresholds.
@@ -80,6 +83,8 @@ class CDR3Clustering:
         -------
             pd.Series: Series with cluster labels.
         """
+        if group is None:
+            group = ["v_gene", "j_gene", "cdr3_length"]
         use = group + ["cdr3"]
         df["cluster"] = applyParallel(
             df[use].groupby(group),
@@ -204,7 +209,7 @@ class DistanceMatrix:
 class HILARy:
     """Infer families using CDR3 and mutation information."""
 
-    def __init__(self, apriori: Apriori, df, crude: bool = False):
+    def __init__(self, apriori: Apriori, df, crude: bool = False) -> None:
         """Initialize Hilary attributes using Apriori object.
 
         Args:
@@ -255,7 +260,7 @@ class HILARy:
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
         cdf = return_cdf(self.classes, self.cdfs, class_id)
-        pn = np.diff(cdf, prepend=[0], append=[1])
+        pn = np.diff(cdf, prepend=[0], append=[1]).astype(float)
         ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
         nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
         exp_n = (l / alignment_length) * (nLs + 1)
@@ -267,9 +272,10 @@ class HILARy:
             class_id,
         )
 
-    def get_xy_thresholds(self, df):
+    def get_xy_thresholds(self, df) -> None:
         alignment_length = len(df["alt_sequence_alignment"].values[0])
         mutations_grouped = []
+        # we should parallelize this for loop, it is currently a bottleneck on my side
         for (
             v_gene,
             j_gene,

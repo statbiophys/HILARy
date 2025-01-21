@@ -18,7 +18,7 @@ class EM:
         h: np.ndarray,
         howmany: int = 10,
         positives: str = "poisson",
-    ):
+    ) -> None:
         """Initialize class.
 
         Args:
@@ -95,7 +95,7 @@ class EM:
         return theta
 
     def discreteMix(self, x, theta):
-        """Evaluate mixture distribution"""
+        """Evaluate mixture distribution."""
         rho, mu = theta
         if self.positives == "geometric":
             return rho / (mu + 1) * (mu / (mu + 1)) ** x + (1 - rho) * self.const_p0[x]
@@ -104,7 +104,7 @@ class EM:
 
     def error(self, theta):
         """Estimate goodness of fit
-        By default returns rescaled root MSE
+        By default returns rescaled root MSE.
         """
         y1 = self.h / sum(self.h)
         y2 = self.discreteMix(self.b, theta)
