@@ -22,8 +22,30 @@ log = structlog.get_logger(__name__)
 
 # pylint: disable=invalid-name
 
+def select_df(args):
+    """
+    Selects rows from a DataFrame based on a given selection strength.
+    Args:
+        args (tuple): A tuple containing:
+            - (j_gene, cdr3_length): A tuple of the gene and CDR3 length to filter on.
+            - sel1 (DataFrame): The DataFrame to filter.
 
-def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.array:
+    Returns
+    -------
+        DataFrame: A filtered DataFrame where the mean absolute difference between
+        the values in sel1 and the corresponding values in sel2 is greater than
+        the selection strength.
+    """
+    selection_strength=0.02
+    (j_gene,cdr3_length),cdfs=args
+    v_gene_nans=cdfs.isna().v_gene
+    j_gene_nans=cdfs.isna().j_gene
+    sel1=cdfs.loc[np.logical_and(~v_gene_nans,~j_gene_nans)]
+    sel2=cdfs.loc[np.logical_and(v_gene_nans,~j_gene_nans)]
+    select=np.abs(sel1.values[:,3:]-sel2.values[:,3:]).mean(axis=1)>selection_strength
+    return sel1[select]
+
+def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int, extend: int = 0) -> np.array:
     """Class to extract the right cdf.
 
     Args:
@@ -35,27 +57,32 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int) -> np.a
     -------
         np.array: array encoding the cdf
     """
-    l = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
+    cdr3_length = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
     if "v_gene" in cdfs.columns and "j_gene" in cdfs.columns:  ## use vjl cdf
         j = classes.loc[classes.class_id == class_id].j_gene.values[0]
         v = classes.loc[classes.class_id == class_id].v_gene.values[0]
-        sel1 = np.logical_and(cdfs["cdr3_length"] == l, cdfs["j_gene"] == j)
-        sel = np.logical_and(sel1,cdfs["v_gene"] == v)
+        sel_jl = np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"] == j)
+        sel = np.logical_and(sel_jl,cdfs["v_gene"] == v)
         if sum(sel) > 0:
-            cdf = cdfs.loc[sel].values[0, 3 : l + 3]  ## found vjl cdf
-        elif sum(sel1) > 0:
-            cdf = cdfs.loc[sel1].values[0, 3 : l + 3]  ## found jl cdf
+            cdf = cdfs.loc[sel].values[0, 3 : cdr3_length + 3 + extend]  ## found vjl cdf
+        elif sum(sel_jl) > 0:
+            sel2 = np.logical_and(sel_jl,cdfs["v_gene"].isna())
+            cdf = cdfs.loc[sel2].values[0, 3 : cdr3_length + 3 + extend]  ## found jl cdf
         else:
-            cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 3 : l + 3]
+            #print('.',end='')
+            sel_na=np.logical_and(cdfs["v_gene"].isna(),cdfs["j_gene"].isna())
+            cdf = cdfs.loc[np.logical_and(sel_na,cdfs["cdr3_length"] == cdr3_length)].values[0, 3 : cdr3_length + 3 + extend]
     elif "j_gene" in cdfs.columns: ## use jl cdf
         j = classes.loc[classes.class_id == class_id].j_gene.values[0]
-        sel = np.logical_and(cdfs["cdr3_length"] == l, cdfs["j_gene"] == j)
+        sel = np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"] == j)
         if sum(sel) > 0:
-            cdf = cdfs.loc[sel].values[0, 2 : l + 2]  ## found jl cdf
+            cdf = cdfs.loc[sel].values[0, 2 : cdr3_length + 2 + extend]  ## found jl cdf
         else:
-            cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 2 : l + 2]
+            #print('.',end='')
+            sel= np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"].isna())
+            cdf = cdfs.loc[sel].values[0, 2 : cdr3_length + 2 + extend]
     else: ## use l cdf
-        cdf = cdfs.loc[cdfs["cdr3_length"] == l].values[0, 1 : l + 1]
+        cdf = cdfs.loc[cdfs["cdr3_length"] == cdr3_length].values[0, 1 : cdr3_length + 1 + extend]
     return cdf
 
 
@@ -177,7 +204,9 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     l_classes = classes.groupby("cdr3_length")[["sequence_count", "pair_count"]].sum().reset_index()
     l_classes["v_gene"] = "None"
     l_classes["j_gene"] = "None"
-    classes = pd.concat([classes, l_classes], ignore_index=True).sort_values(
+    jl_classes = classes.groupby(["j_gene", "cdr3_length"])[["sequence_count", "pair_count"]].sum().reset_index()
+    jl_classes["v_gene"] = "None"
+    classes = pd.concat([classes, l_classes,jl_classes], ignore_index=True).sort_values(
         "sequence_count",
         ascending=False,
     )

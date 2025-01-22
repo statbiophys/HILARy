@@ -14,7 +14,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, preprocess, return_cdf
+from hilary.utils import applyParallel, preprocess, return_cdf, select_df
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -34,6 +34,7 @@ class Apriori:
         model: str = 'vjl',
         silent: bool = False,
         paired: bool = False,
+        selection_cdfs: float = 0.02,
     ) -> None:
         """Initialize attributes to later run class methods.
 
@@ -60,6 +61,7 @@ class Apriori:
         self.histograms = None
         self.mean_prevalence = None
         self.mean_mean_distance = None
+        self.selection_cdfs = selection_cdfs
         if not paired:
             if model=='vjl':
                 self.cdfs = pd.read_csv(
@@ -154,6 +156,32 @@ class Apriori:
         )
         results["class_id"] = results.index
         return results
+
+    def select_cdfs(self) -> None:
+        """Selects VJL only CDFs with large differences with respect to JL CDFs and
+        that are present in the data.
+
+        Returns
+        -------
+            None
+        """
+        log.debug(
+            "Select CDFs for the analysis.",
+        )
+        selected_dfs=applyParallel(
+            self.cdfs.groupby(['j_gene','cdr3_length']),
+            func=select_df,
+            cpuCount=self.threads,
+            silent=self.silent,)
+        v_gene_nans=self.cdfs.isna().v_gene
+        j_gene_nans=self.cdfs.isna().j_gene
+        jdf=self.cdfs.loc[np.logical_and(v_gene_nans,~j_gene_nans)]
+        ldf=self.cdfs.loc[np.logical_and(v_gene_nans,j_gene_nans)]
+        self.cdfs = pd.concat([selected_dfs,jdf,ldf]).reset_index(drop=True)
+        m=self.cdfs.fillna('None')[['v_gene','j_gene','cdr3_length']]
+        m['index_values']=m.index.values
+        index=m.merge(self.classes[['v_gene','j_gene','cdr3_length']]).index_values
+        self.cdfs=self.cdfs.iloc[index].reset_index(drop=True) # This is a hack to avoid memory issues
 
     def get_histograms(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute histograms for all large classes.
@@ -257,43 +285,52 @@ class Apriori:
         -------
             pd.DataFrame: Precise and sensitive thresholds.
         """
-        tuple_l, ldf = args
-        l = int(tuple_l[0])
+        _, ldf = args
+        class_id=ldf.class_id.values[0]
+        cdr3_length = ldf.cdr3_length.values[0]
+        rho = ldf.effective_prevalence.values[0]
+        mu = ldf.effective_mean_distance.values[0] * cdr3_length
 
-        if l > self.lengths[-1] or l < self.lengths[0] or l % 3:
+        if cdr3_length > self.lengths[-1] or cdr3_length < self.lengths[0] or cdr3_length % 3:
             ldf[["precise_threshold", "sensitive_threshold"]] = (
-                np.ones((len(ldf), 2), dtype=int) * l // 5
+                np.ones((len(ldf), 2), dtype=int) * cdr3_length // 5
             )
             return ldf[["precise_threshold", "sensitive_threshold"]]
 
-        rhos = ldf["effective_prevalence"]
-        mus = ldf["effective_mean_distance"] * l
-        bins = np.arange(l + 1)
-        cdf0 = self.cdfs.loc[self.cdfs["cdr3_length"] == l].values[0, 1 : l + 2]
-        cdf1 = (np.array([mu**bins * np.exp(-mu) for mu in mus]) / factorial(bins)).cumsum(axis=1)
-        ps = cdf0 / cdf1
-        t_sens = (cdf1 < self.sensitivity).sum(axis=1)
-        t_prec = (
-            np.array(
-                [
-                    p < rho / (1 + 1e-5 - rho) * (1 - self.precision) / self.precision
-                    for p, rho in zip(ps, rhos)
-                ],
-            ).sum(axis=1)
-            - 1
-        )
+        bins = np.arange(cdr3_length+1)
+        cdf0= return_cdf(self.classes, self.cdfs, class_id, extend = 1)
+        cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
+        p = cdf0 / cdf1
+        t_sens = (cdf1 < self.sensitivity).sum()
+        t_prec = (p < rho / (1 + 1e-5 - rho) * (1 - self.precision) / self.precision).sum() - 1
         t_prec = np.min([t_prec, t_sens], axis=0)
         ldf["precise_threshold"] = t_prec
         ldf["sensitive_threshold"] = t_sens
         return ldf[["precise_threshold", "sensitive_threshold"]]
 
     def get_thresholds(self) -> None:
-        """Assign thresholds using null distribution from model."""
+        """
+        Assign thresholds using null distribution from model.
+
+        This method calculates and assigns precise and sensitive thresholds for each class
+        based on the null distribution from the model. It uses parallel processing to
+        speed up the computation by applying the `assign_precise_sensitive_thresholds`
+        function to groups of classes defined by their 'v_gene', 'j_gene', and 'cdr3_length'
+        attributes.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         log.debug(
             "Assign thresholds using null distribution from model.",
         )
         self.classes[["precise_threshold", "sensitive_threshold"]] = applyParallel(
-            self.classes.groupby(["cdr3_length"]),
+            self.classes.groupby(["v_gene", "j_gene", "cdr3_length"]),
             self.assign_precise_sensitive_thresholds,
             cpuCount=self.threads,
             silent=self.silent,
