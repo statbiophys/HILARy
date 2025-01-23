@@ -6,6 +6,7 @@ import os
 from itertools import combinations
 from multiprocessing import cpu_count
 from pathlib import Path
+from scipy.stats import poisson
 
 import numpy as np
 import pandas as pd
@@ -14,14 +15,14 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, preprocess, return_cdf, select_df
+from hilary.utils import applyParallel, preprocess, return_cdf, select_df, cdf_to_pmf
 
 pd.set_option("mode.chained_assignment", None)
 
 log = structlog.get_logger(__name__)
 
 
-class Apriori:
+class self:
     """Computes statistics of pairwise distances."""
 
     def __init__(
@@ -31,7 +32,7 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        model: str = 'vjl',
+        model: str = 'human_jl',
         silent: bool = False,
         paired: bool = False,
         selection_cdfs: float = 0.02,
@@ -330,3 +331,32 @@ class Apriori:
             cpuCount=self.threads,
             silent=self.silent,
         )
+
+    def return_fit(self,class_id):
+        """
+        Return fits of the distribution to the histogram data for a given class ID.
+        
+        Parameters
+        ----------
+        class_id (int): The ID of the class for which the fit is to be returned.
+        
+        Returns
+        -------
+        tuple: A tuple containing the following elements:
+            - bins (numpy.ndarray): The bin edges for the histogram.
+            - cdf0 (numpy.ndarray): The cumulative distribution function (CDF) for the negative distribution.
+            - cdf1 (numpy.ndarray): The Poisson CDF for the positive distribution.
+            - prevalence (float): The prevalence of the class.
+            - fitted_distribution (numpy.ndarray): The fitted distribution for the class.
+            - hist_data_normalized (numpy.ndarray): The normalized histogram data for the class.
+        """
+        v=self.classes.loc[self.classes.class_id==class_id]
+        cdr3_length=v.cdr3_length.values[0]
+        bins=np.arange(cdr3_length+1)
+        hist_data=self.histograms.loc[self.histograms.class_id==class_id].values[0,1:cdr3_length+2]
+        mu= v.effective_mean_distance.values[0]
+        prevalence=v.prevalence.values[0]
+        cdf0=return_cdf(self.classes,self.cdfs,v.class_id.values[0],extend=1)
+        cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
+        fitted_distribution = prevalence*poisson.pmf(bins,mu*cdr3_length)+(1-prevalence)*cdf_to_pmf(cdf0)
+        return bins, cdf0 , cdf1, prevalence, fitted_distribution, hist_data/sum(hist_data)
