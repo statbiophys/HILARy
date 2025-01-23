@@ -63,14 +63,9 @@ class Apriori:
         self.mean_mean_distance = None
         self.selection_cdfs = selection_cdfs
         if not paired:
-            if model=='vjl':
-                self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path("cdfs_human_vjl.csv.gz"),
+            self.cdfs = pd.read_csv(
+                Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
             )
-            else:
-                self.cdfs = pd.read_csv(
-                    Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
-                )
         else:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
@@ -172,7 +167,7 @@ class Apriori:
             self.cdfs.groupby(['j_gene','cdr3_length']),
             func=select_df,
             cpuCount=self.threads,
-            silent=self.silent,)
+            silent=True,)
         v_gene_nans=self.cdfs.isna().v_gene
         j_gene_nans=self.cdfs.isna().j_gene
         jdf=self.cdfs.loc[np.logical_and(v_gene_nans,~j_gene_nans)]

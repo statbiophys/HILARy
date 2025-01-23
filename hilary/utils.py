@@ -36,13 +36,13 @@ def select_df(args):
         the values in sel1 and the corresponding values in sel2 is greater than
         the selection strength.
     """
-    selection_strength=0.02
-    (j_gene,cdr3_length),cdfs=args
+    selection_strength = 0.01 # find out a way to pass this as an argument
+    (_,_),cdfs = args
     v_gene_nans=cdfs.isna().v_gene
     j_gene_nans=cdfs.isna().j_gene
     sel1=cdfs.loc[np.logical_and(~v_gene_nans,~j_gene_nans)]
     sel2=cdfs.loc[np.logical_and(v_gene_nans,~j_gene_nans)]
-    select=np.abs(sel1.values[:,3:]-sel2.values[:,3:]).mean(axis=1)>selection_strength
+    select=np.abs(sel1.values[:,3:]-sel2.values[:,3:]).mean(axis=1) > selection_strength
     return sel1[select]
 
 def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int, extend: int = 0) -> np.array:
@@ -63,13 +63,12 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int, extend:
         v = classes.loc[classes.class_id == class_id].v_gene.values[0]
         sel_jl = np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"] == j)
         sel = np.logical_and(sel_jl,cdfs["v_gene"] == v)
+        sel2 = np.logical_and(sel_jl,cdfs["v_gene"].isna())
         if sum(sel) > 0:
             cdf = cdfs.loc[sel].values[0, 3 : cdr3_length + 3 + extend]  ## found vjl cdf
-        elif sum(sel_jl) > 0:
-            sel2 = np.logical_and(sel_jl,cdfs["v_gene"].isna())
+        elif sum(sel2) > 0:
             cdf = cdfs.loc[sel2].values[0, 3 : cdr3_length + 3 + extend]  ## found jl cdf
         else:
-            #print('.',end='')
             sel_na=np.logical_and(cdfs["v_gene"].isna(),cdfs["j_gene"].isna())
             cdf = cdfs.loc[np.logical_and(sel_na,cdfs["cdr3_length"] == cdr3_length)].values[0, 3 : cdr3_length + 3 + extend]
     elif "j_gene" in cdfs.columns: ## use jl cdf
@@ -78,7 +77,6 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int, extend:
         if sum(sel) > 0:
             cdf = cdfs.loc[sel].values[0, 2 : cdr3_length + 2 + extend]  ## found jl cdf
         else:
-            #print('.',end='')
             sel= np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"].isna())
             cdf = cdfs.loc[sel].values[0, 2 : cdr3_length + 2 + extend]
     else: ## use l cdf
