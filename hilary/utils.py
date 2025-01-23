@@ -27,7 +27,7 @@ def cdf_to_pmf(cdf_values):
 
     Parameters
     ----------
-    cdf_values (array-like): A list or array of CDF values. The CDF must start at 0 (implicitly) 
+    cdf_values (array-like): A list or array of CDF values. The CDF must start at 0 (implicitly)
                              and end at 1. The values must be non-decreasing.
 
     Returns
@@ -35,9 +35,11 @@ def cdf_to_pmf(cdf_values):
     array-like: An array of PMF values, which are the differences between consecutive CDF values.
     """
     if cdf_values[0] < 0 or cdf_values[-1] != 1.0:
-        raise ValueError("CDF must start at 0 (implicitly) and end at 1.")
+        msg = "CDF must start at 0 (implicitly) and end at 1."
+        raise ValueError(msg)
     if not np.all(np.diff(cdf_values) >= 0):
-        raise ValueError("CDF values must be non-decreasing.")
+        msg = "CDF values must be non-decreasing."
+        raise ValueError(msg)
 
     # PMF is the difference between consecutive CDF values
     pmf_values = np.diff(cdf_values, prepend=0)  # Prepend 0 for the first element
