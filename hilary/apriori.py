@@ -286,11 +286,15 @@ class Apriori:
         cdr3_length = ldf.cdr3_length.values[0]
         rho = ldf.effective_prevalence.values[0]
         mu = ldf.effective_mean_distance.values[0] * cdr3_length
+        err_poisson = ldf.error_poisson.values[0]
+        err_geo = ldf.error_geo.values[0]
+        min_err=np.min([err_poisson,err_geo])
+        threshold_90 = cdr3_length // 10
 
+        # if outside the regime where we have cdfs
         if cdr3_length > self.lengths[-1] or cdr3_length < self.lengths[0] or cdr3_length % 3:
-            ldf[["precise_threshold", "sensitive_threshold"]] = (
-                np.ones((len(ldf), 2), dtype=int) * cdr3_length // 5
-            )
+            ldf["precise_threshold"] = threshold_90
+            ldf["sensitive_threshold"] = threshold_90
             return ldf[["precise_threshold", "sensitive_threshold"]]
 
         bins = np.arange(cdr3_length+1)
@@ -302,6 +306,11 @@ class Apriori:
         t_prec = np.min([t_prec, t_sens], axis=0)
         ldf["precise_threshold"] = t_prec
         ldf["sensitive_threshold"] = t_sens
+
+        if min_err > 0.1:
+            # at high error threhsold at 90% identity or conservative threshold
+            ldf["precise_threshold"] = np.min([t_prec,threshold_90])
+            ldf["sensitive_threshold"] = np.min([t_sens,threshold_90]) # at high error threhsold at 90% identity
         return ldf[["precise_threshold", "sensitive_threshold"]]
 
     def get_thresholds(self) -> None:
