@@ -22,7 +22,7 @@ pd.set_option("mode.chained_assignment", None)
 log = structlog.get_logger(__name__)
 
 
-class self:
+class Apriori:
     """Computes statistics of pairwise distances."""
 
     def __init__(
@@ -359,4 +359,4 @@ class self:
         cdf0 = return_cdf(self.classes,self.cdfs,v.class_id.values[0],extend=1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
         fitted_distribution = prevalence*poisson.pmf(bins,mu*cdr3_length)+(1-prevalence)*cdf_to_pmf(cdf0)
-        return bins, cdf0 , cdf1, prevalence, fitted_distribution, hist_data/sum(hist_data)
+        return bins, cdf_to_pmf(cdf0) , cdf_to_pmf(cdf1), prevalence, fitted_distribution, hist_data/sum(hist_data)
