@@ -290,13 +290,20 @@ class Apriori:
         err_geo = ldf.error_geo.values[0]
         min_err=np.min([err_poisson,err_geo])
         threshold_90 = cdr3_length // 10
+        threshold_80 = cdr3_length // 5
 
         # if outside the regime where we have cdfs
-        if cdr3_length > self.lengths[-1] or cdr3_length < self.lengths[0] or cdr3_length % 3:
+        if "v_gene" in self.cdfs.columns and "j_gene" in self.cdfs.columns:
+            cdr3_dfs = self.cdfs.loc[np.logical_and(self.cdfs["j_gene"].isna(),self.cdfs["v_gene"].isna())]
+        elif "j_gene" in self.cdfs.columns:
+            cdr3_dfs = self.cdfs.loc[self.cdfs["j_gene"].isna()]
+        else:
+            cdr3_dfs = self.cdfs
+        if cdr3_length > cdr3_dfs.cdr3_length.max() or cdr3_length < cdr3_dfs.cdr3_length.min() or cdr3_length % 3:
             ldf["precise_threshold"] = threshold_90
-            ldf["sensitive_threshold"] = threshold_90
+            ldf["sensitive_threshold"] = threshold_80
             return ldf[["precise_threshold", "sensitive_threshold"]]
-
+        
         bins = np.arange(cdr3_length+1)
         cdf0= return_cdf(self.classes, self.cdfs, class_id, extend = 1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
@@ -308,9 +315,9 @@ class Apriori:
         ldf["sensitive_threshold"] = t_sens
 
         if min_err > 0.1:
-            # at high error threhsold at 90% identity or conservative threshold
+            # at high error threhsold use default thresholds
             ldf["precise_threshold"] = np.min([t_prec,threshold_90])
-            ldf["sensitive_threshold"] = np.min([t_sens,threshold_90]) # at high error threhsold at 90% identity
+            ldf["sensitive_threshold"] = np.min([t_sens,threshold_80])
         return ldf[["precise_threshold", "sensitive_threshold"]]
 
     def get_thresholds(self) -> None:
