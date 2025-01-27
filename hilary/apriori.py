@@ -65,11 +65,11 @@ class Apriori:
         self.selection_cdfs = selection_cdfs
         if not paired:
             self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path(f"cdfs_{model}.csv"),
+                Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{model}.csv"),
             )
         else:
             self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path("cdfs_paired.csv"),
+                Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.csv"),
             )
         self.classes = pd.DataFrame()
 

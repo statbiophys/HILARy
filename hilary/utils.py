@@ -81,6 +81,8 @@ def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int, extend:
         np.array: array encoding the cdf
     """
     cdr3_length = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
+    if cdr3_length > cdfs.cdr3_length.max(): cdr3_length=cdfs.cdr3_length.max()
+    elif cdr3_length < cdfs.cdr3_length.min(): cdr3_length=cdfs.cdr3_length.min()
     if "v_gene" in cdfs.columns and "j_gene" in cdfs.columns:  ## use vjl cdf
         j = classes.loc[classes.class_id == class_id].j_gene.values[0]
         v = classes.loc[classes.class_id == class_id].v_gene.values[0]
