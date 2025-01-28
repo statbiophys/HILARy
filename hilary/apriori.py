@@ -314,7 +314,6 @@ class Apriori:
             ldf["precise_threshold"] = threshold_90
             ldf["sensitive_threshold"] = threshold_80
             return ldf[["precise_threshold", "sensitive_threshold"]]
-        
         bins = np.arange(cdr3_length+1)
         cdf0= return_cdf(self.classes, self.cdfs, class_id, extend = 1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
