@@ -20,7 +20,7 @@ dependencies = [
         "scipy>1.11,<2",
 ]
 authors = [{name = "Natanael Spisak", email = "natanael.spisak@gmail.com"},
-           {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
+          {name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"}]
 maintainers = [{name = "Gabriel Athènes", email = "gabriel.athenes@polytechnique.edu"},{name = "Giulio Isacchini", email = "giulioisac@gmail.com"}]
 description = ''
 readme = "README.md"
@@ -55,7 +55,7 @@ exclude=["data_with_scripts*"]
 namespaces = false
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 fix = true
 exclude = [
   "__init__.py",
@@ -108,7 +108,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.pycodestyle]
-max-doc-length = 88
+max-doc-length = 100
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
