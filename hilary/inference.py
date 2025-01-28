@@ -333,6 +333,7 @@ class HILARy:
                 - float: The sorted zs value at the required prevalence percentile.
                 - int: The class identifier.
         """
+        np.random.seed(42)
         size = int(1e6)
         (_, _, l, prevalence, mutations, alignment_length, class_id) = args
         l = int(l)

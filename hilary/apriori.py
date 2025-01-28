@@ -32,7 +32,7 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        model: str = 'human_jl',
+        model: str = "human_jl",
         silent: bool = False,
         paired: bool = False,
         selection_cdfs: float = 0.02,
@@ -63,8 +63,9 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.selection_cdfs = selection_cdfs
-        self.check_translation=False
-        if 'mouse' in model: self.check_translation=True
+        self.check_translation = False
+        if "mouse" in model:
+            self.check_translation = True
         if not paired:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{model}.csv"),
@@ -166,20 +167,23 @@ class Apriori:
         log.debug(
             "Select CDFs for the analysis.",
         )
-        selected_dfs=applyParallel(
-            self.cdfs.groupby(['j_gene','cdr3_length']),
+        selected_dfs = applyParallel(
+            self.cdfs.groupby(["j_gene", "cdr3_length"]),
             func=select_df,
             cpuCount=self.threads,
-            silent=True,)
-        v_gene_nans=self.cdfs.isna().v_gene
-        j_gene_nans=self.cdfs.isna().j_gene
-        jdf=self.cdfs.loc[np.logical_and(v_gene_nans,~j_gene_nans)]
-        ldf=self.cdfs.loc[np.logical_and(v_gene_nans,j_gene_nans)]
-        self.cdfs = pd.concat([selected_dfs,jdf,ldf]).reset_index(drop=True)
-        m=self.cdfs.fillna('None')[['v_gene','j_gene','cdr3_length']]
-        m['index_values']=m.index.values
-        index=m.merge(self.classes[['v_gene','j_gene','cdr3_length']]).index_values
-        self.cdfs=self.cdfs.iloc[index].reset_index(drop=True) # This is a hack to avoid memory issues
+            silent=True,
+        )
+        v_gene_nans = self.cdfs.isna().v_gene
+        j_gene_nans = self.cdfs.isna().j_gene
+        jdf = self.cdfs.loc[np.logical_and(v_gene_nans, ~j_gene_nans)]
+        ldf = self.cdfs.loc[np.logical_and(v_gene_nans, j_gene_nans)]
+        self.cdfs = pd.concat([selected_dfs, jdf, ldf]).reset_index(drop=True)
+        m = self.cdfs.fillna("None")[["v_gene", "j_gene", "cdr3_length"]]
+        m["index_values"] = m.index.values
+        index = m.merge(self.classes[["v_gene", "j_gene", "cdr3_length"]]).index_values
+        self.cdfs = self.cdfs.iloc[index].reset_index(
+            drop=True
+        )  # This is a hack to avoid memory issues
 
     def get_histograms(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute histograms for all large classes.
@@ -247,12 +251,14 @@ class Apriori:
             "Computing prevalence and mean distance for all classes",
         )
         if self.check_translation:
-            if not 'IGHJ0-7IA7' in np.unique(self.classes.j_gene): # mouse translation to imgt
-                translation_df=pd.read_csv('~/mouse/victor_mouse/mouse_ogrdb2imgt.csv')
-                translation_dict=dict(zip(translation_df.values[:,0],translation_df.values[:,1]))
-                translation_dict[np.nan]=np.nan
+            if not "IGHJ0-7IA7" in np.unique(self.classes.j_gene):  # mouse translation to imgt
+                translation_df = pd.read_csv("~/mouse/victor_mouse/mouse_ogrdb2imgt.csv")
+                translation_dict = dict(
+                    zip(translation_df.values[:, 0], translation_df.values[:, 1])
+                )
+                translation_dict[np.nan] = np.nan
                 self.cdfs.j_gene = self.cdfs.j_gene.apply(lambda x: translation_dict[x])
-                if 'v_gene' in self.cdfs.columns:
+                if "v_gene" in self.cdfs.columns:
                     self.cdfs.v_gene = self.cdfs.v_gene.apply(lambda x: translation_dict[x])
 
         parameters = applyParallel(
@@ -293,29 +299,35 @@ class Apriori:
             pd.DataFrame: Precise and sensitive thresholds.
         """
         _, ldf = args
-        class_id=ldf.class_id.values[0]
+        class_id = ldf.class_id.values[0]
         cdr3_length = ldf.cdr3_length.values[0]
         rho = ldf.effective_prevalence.values[0]
         mu = ldf.effective_mean_distance.values[0] * cdr3_length
         err_poisson = ldf.error_poisson.values[0]
         err_geo = ldf.error_geo.values[0]
-        min_err=np.min([err_poisson,err_geo])
+        min_err = np.min([err_poisson, err_geo])
         threshold_90 = cdr3_length // 10
         threshold_80 = cdr3_length // 5
 
         # if outside the regime where we have cdfs
         if "v_gene" in self.cdfs.columns and "j_gene" in self.cdfs.columns:
-            cdr3_dfs = self.cdfs.loc[np.logical_and(self.cdfs["j_gene"].isna(),self.cdfs["v_gene"].isna())]
+            cdr3_dfs = self.cdfs.loc[
+                np.logical_and(self.cdfs["j_gene"].isna(), self.cdfs["v_gene"].isna())
+            ]
         elif "j_gene" in self.cdfs.columns:
             cdr3_dfs = self.cdfs.loc[self.cdfs["j_gene"].isna()]
         else:
             cdr3_dfs = self.cdfs
-        if cdr3_length > cdr3_dfs.cdr3_length.max() or cdr3_length < cdr3_dfs.cdr3_length.min() or cdr3_length % 3:
+        if (
+            cdr3_length > cdr3_dfs.cdr3_length.max()
+            or cdr3_length < cdr3_dfs.cdr3_length.min()
+            or cdr3_length % 3
+        ):
             ldf["precise_threshold"] = threshold_90
             ldf["sensitive_threshold"] = threshold_80
             return ldf[["precise_threshold", "sensitive_threshold"]]
-        bins = np.arange(cdr3_length+1)
-        cdf0= return_cdf(self.classes, self.cdfs, class_id, extend = 1)
+        bins = np.arange(cdr3_length + 1)
+        cdf0 = return_cdf(self.classes, self.cdfs, class_id, extend=1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
         p = cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
@@ -326,8 +338,8 @@ class Apriori:
 
         if min_err > 0.1:
             # at high error threhsold use default thresholds
-            ldf["precise_threshold"] = np.min([t_prec,threshold_90])
-            ldf["sensitive_threshold"] = np.min([t_sens,threshold_80])
+            ldf["precise_threshold"] = np.min([t_prec, threshold_90])
+            ldf["sensitive_threshold"] = np.min([t_sens, threshold_80])
         return ldf[["precise_threshold", "sensitive_threshold"]]
 
     def get_thresholds(self) -> None:
@@ -358,7 +370,7 @@ class Apriori:
             silent=self.silent,
         )
 
-    def return_fit(self,class_id):
+    def return_fit(self, class_id):
         """
         Return fits of the distribution to the histogram data for a given class ID.
 
@@ -378,11 +390,22 @@ class Apriori:
         """
         v = self.classes.loc[self.classes.class_id == class_id]
         cdr3_length = v.cdr3_length.values[0]
-        bins = np.arange(cdr3_length+1)
-        hist_data = self.histograms.loc[self.histograms.class_id == class_id].values[0 , 1 : cdr3_length + 2]
+        bins = np.arange(cdr3_length + 1)
+        hist_data = self.histograms.loc[self.histograms.class_id == class_id].values[
+            0, 1 : cdr3_length + 2
+        ]
         mu = v.effective_mean_distance.values[0]
         prevalence = v.prevalence.values[0]
-        cdf0 = return_cdf(self.classes,self.cdfs,v.class_id.values[0],extend=1)
+        cdf0 = return_cdf(self.classes, self.cdfs, v.class_id.values[0], extend=1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
-        fitted_distribution = prevalence*poisson.pmf(bins,mu*cdr3_length)+(1-prevalence)*cdf_to_pmf(cdf0)
-        return bins, cdf_to_pmf(cdf0) , cdf_to_pmf(cdf1), prevalence, fitted_distribution, hist_data/sum(hist_data)
+        fitted_distribution = prevalence * poisson.pmf(bins, mu * cdr3_length) + (
+            1 - prevalence
+        ) * cdf_to_pmf(cdf0)
+        return (
+            bins,
+            cdf_to_pmf(cdf0),
+            cdf_to_pmf(cdf1),
+            prevalence,
+            fitted_distribution,
+            hist_data / sum(hist_data),
+        )
