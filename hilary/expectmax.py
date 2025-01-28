@@ -28,7 +28,7 @@ class EM:
             howmany (int, optional): Hopw many iterations to run for expectmax algo. Defaults to 10.
             positives (str, optional): Distribution to choose for P1. Defaults to "poisson".
         """
-        self.l = int(l)
+        self.l = len(cdf)
         self.h = h.astype(int)[: self.l + 1]
         self.b = np.arange(self.l + 1, dtype=int)
         self.cdf = cdf

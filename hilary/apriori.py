@@ -63,6 +63,8 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.selection_cdfs = selection_cdfs
+        self.check_translation=False
+        if 'mouse' in model: self.check_translation=True
         if not paired:
             self.cdfs = pd.read_csv(
                 Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{model}.csv"),
@@ -244,6 +246,15 @@ class Apriori:
         log.debug(
             "Computing prevalence and mean distance for all classes",
         )
+        if self.check_translation:
+            if not 'IGHJ0-7IA7' in np.unique(self.classes.j_gene): # mouse translation to imgt
+                translation_df=pd.read_csv('~/mouse/victor_mouse/mouse_ogrdb2imgt.csv')
+                translation_dict=dict(zip(translation_df.values[:,0],translation_df.values[:,1]))
+                translation_dict[np.nan]=np.nan
+                self.cdfs.j_gene = self.cdfs.j_gene.apply(lambda x: translation_dict[x])
+                if 'v_gene' in self.cdfs.columns:
+                    self.cdfs.v_gene = self.cdfs.v_gene.apply(lambda x: translation_dict[x])
+
         parameters = applyParallel(
             self.histograms.groupby(["class_id"]),
             self.estimate,

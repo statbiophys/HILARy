@@ -591,7 +591,7 @@ class HILARy:
             df["to_resolve"] = applyParallel(
                 [df.groupby(self.group).get_group(g) for g in self.remaining],
                 self.mark_class,
-                silent=True,
+                silent=self.silent,
                 cpuCount=self.threads,
             )
             df.fillna(value={"to_resolve": False}, inplace=True)
