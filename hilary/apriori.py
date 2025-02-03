@@ -32,7 +32,7 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        model: str = "human_jl",
+        specie: str = "human",
         silent: bool = False,
         paired: bool = False,
         selection_cdfs: float = 0.02,
@@ -48,7 +48,7 @@ class Apriori:
             sensitivity (float, optional): Desired sensitivity, defaults to 1.
             threads (int, optional): Number of cpus on which to run code, defaults to 1. -1 to use
             all available cpus.
-            model (int, optional): Model name to infer Null distribution, defaults to 326713.
+            specie (str) : Specie of the repertoire.
             silent (bool) : If true do not to show progress bars.
             paired (bool) : If true use null distributions over paired chain sequences.
         """
@@ -64,16 +64,12 @@ class Apriori:
         self.mean_mean_distance = None
         self.selection_cdfs = selection_cdfs
         self.check_translation = False
-        if "mouse" in model:
-            self.check_translation = True
+        self.specie=specie
+        self.check_translation = self.specie=="mouse"
         if not paired:
-            self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{model}.csv"),
-            )
+            self.cdf_path=Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{specie}_vjl.parquet")
         else:
-            self.cdfs = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.csv"),
-            )
+            self.cdf_path=Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
         self.classes = pd.DataFrame()
 
     def preprocess(self, df: pd.DataFrame, df_kappa: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -212,12 +208,38 @@ class Apriori:
             pd.DataFrame: dataframe with parameters for each class id.
         """
         class_id, h = args
-        l = self.classes.loc[self.classes.class_id == class_id].cdr3_length.values[0]
-        cdf = return_cdf(self.classes, self.cdfs, class_id)
-        em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="geometric")
+        classes_temp = self.classes.loc[self.classes.class_id == class_id]
+        l = classes_temp.cdr3_length.values[0]
+        v_gene = classes_temp.v_gene.values[0]
+        j_gene = classes_temp.j_gene.values[0]
+        cdf_df = pd.read_parquet(
+            self.cdf_path,
+            filters=[
+                ("v_gene", "==", v_gene),
+                ("j_gene", "==", j_gene),
+                ("cdr3_length","==",l)
+                    ]
+                )
+        if  cdf_df.empty :
+            cdf_df = pd.read_parquet(
+                self.cdf_path,
+                filters=[
+                    ("j_gene", "==", j_gene),
+                    ("cdr3_length","==",l)
+                        ]
+                    )
+        if cdf_df.empty :
+            cdf_df = pd.read_parquet(
+                self.cdf_path,
+                filters=[
+                    ("cdr3_length","==",l)
+                        ]
+                    )
+        cdf_np=cdf_df.values[0,3:3+l]
+        em = EM(cdf=cdf_np, l=l, h=h.values[0, 1:], positives="geometric")
         rho_geo, mu_geo = em.discreteEM()
         error_geo = em.error([rho_geo, mu_geo])
-        em = EM(cdf=cdf, l=l, h=h.values[0, 1:], positives="poisson")
+        em = EM(cdf=cdf_np, l=l, h=h.values[0, 1:], positives="poisson")
         rho_poisson, mu_poisson = em.discreteEM()
         error_poisson = em.error([rho_geo, mu_geo])
         result = pd.DataFrame(
@@ -251,7 +273,7 @@ class Apriori:
             "Computing prevalence and mean distance for all classes",
         )
         if self.check_translation:
-            if not "IGHJ0-7IA7" in np.unique(self.classes.j_gene):  # mouse translation to imgt
+            if "IGHJ0-7IA7" not in np.unique(self.classes.j_gene):  # mouse translation to imgt
                 translation_df = pd.read_csv("~/mouse/victor_mouse/mouse_ogrdb2imgt.csv")
                 translation_dict = dict(
                     zip(translation_df.values[:, 0], translation_df.values[:, 1])
@@ -299,7 +321,9 @@ class Apriori:
             pd.DataFrame: Precise and sensitive thresholds.
         """
         _, ldf = args
-        class_id = ldf.class_id.values[0]
+        _ = ldf.class_id.values[0]
+        v_gene = ldf.v_gene.values[0]
+        j_gene=ldf.j_gene.values[0]
         cdr3_length = ldf.cdr3_length.values[0]
         rho = ldf.effective_prevalence.values[0]
         mu = ldf.effective_mean_distance.values[0] * cdr3_length
@@ -309,25 +333,37 @@ class Apriori:
         threshold_90 = cdr3_length // 10
         threshold_80 = cdr3_length // 5
 
-        # if outside the regime where we have cdfs
-        if "v_gene" in self.cdfs.columns and "j_gene" in self.cdfs.columns:
-            cdr3_dfs = self.cdfs.loc[
-                np.logical_and(self.cdfs["j_gene"].isna(), self.cdfs["v_gene"].isna())
-            ]
-        elif "j_gene" in self.cdfs.columns:
-            cdr3_dfs = self.cdfs.loc[self.cdfs["j_gene"].isna()]
-        else:
-            cdr3_dfs = self.cdfs
-        if (
-            cdr3_length > cdr3_dfs.cdr3_length.max()
-            or cdr3_length < cdr3_dfs.cdr3_length.min()
-            or cdr3_length % 3
-        ):
+        cdf_df = pd.read_parquet(
+            self.cdf_path,
+            filters=[
+                ("v_gene", "==", v_gene),
+                ("j_gene", "==", j_gene),
+                ("cdr3_length","==",cdr3_length)
+                    ]
+                )
+        if cdf_df.empty :
+            cdf_df = pd.read_parquet(
+                self.cdf_path,
+                filters=[
+                    ("j_gene", "==", j_gene),
+                    ("cdr3_length","==",cdr3_length)
+                        ]
+                    )
+        if cdf_df.empty :
+            cdf_df = pd.read_parquet(
+                self.cdf_path,
+                filters=[
+                    ("cdr3_length","==",cdr3_length)
+                        ]
+                    )
+        if cdf_df.empty:
             ldf["precise_threshold"] = threshold_90
             ldf["sensitive_threshold"] = threshold_80
             return ldf[["precise_threshold", "sensitive_threshold"]]
+        else :
+            cdf0=cdf_df.values[0,3:3+cdr3_length+1]
+
         bins = np.arange(cdr3_length + 1)
-        cdf0 = return_cdf(self.classes, self.cdfs, class_id, extend=1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
         p = cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()

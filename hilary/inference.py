@@ -15,7 +15,7 @@ from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.utils import applyParallel, pRequired, return_cdf
+from hilary.utils import applyParallel, pRequired
 
 if TYPE_CHECKING:
     from hilary.apriori import Apriori
@@ -306,9 +306,9 @@ class HILARy:
                 .index
             )
         self.silent = apriori.silent
-        self.cdfs = apriori.cdfs
         self.lengths = apriori.lengths
         self.threads = apriori.threads
+        self.cdf_path = apriori.cdf_path
 
     def simulate_xs_ys(
         self,
@@ -335,8 +335,11 @@ class HILARy:
         """
         np.random.seed(42)
         size = int(1e6)
-        (_, _, l, prevalence, mutations, alignment_length, class_id) = args
-        l = int(l)
+        (_, _, _, prevalence, mutations, alignment_length, class_id) = args
+        classes_temp = self.classes.loc[self.classes.class_id == class_id]
+        l = classes_temp.cdr3_length.values[0]
+        v_gene = classes_temp.v_gene.values[0]
+        j_gene = classes_temp.j_gene.values[0]
         if l not in self.lengths or (len(mutations) < 100):
             return (0, class_id)
         bins = np.arange(np.max(mutations) + 1)
@@ -350,8 +353,31 @@ class HILARy:
         n0s = np.random.poisson(lam=exp_n0, size=size)
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
-        cdf = return_cdf(self.classes, self.cdfs, class_id)
-        pn = np.diff(cdf, prepend=[0], append=[1]).astype(float)
+        cdf_df = pd.read_parquet(
+            self.cdf_path,
+            filters=[
+                ("v_gene", "==", v_gene),
+                ("j_gene", "==", j_gene),
+                ("cdr3_length","==",l)
+                    ]
+                )
+        if  cdf_df.empty :
+            cdf_df = pd.read_parquet(
+                self.cdf_path,
+                filters=[
+                    ("j_gene", "==", j_gene),
+                    ("cdr3_length","==",l)
+                        ]
+                    )
+        if cdf_df.empty :
+            cdf_df = pd.read_parquet(
+                self.cdf_path,
+                filters=[
+                    ("cdr3_length","==",l)
+                        ]
+                    )
+        cdf_np=cdf_df.values[0,3:3+l]
+        pn = np.diff(cdf_np, prepend=[0], append=[1]).astype(float)
         ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
         nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
         exp_n = (l / alignment_length) * (nLs + 1)
