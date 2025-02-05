@@ -15,7 +15,7 @@ from scipy.stats import poisson
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, cdf_to_pmf, preprocess, return_cdf, select_df
+from hilary.utils import applyParallel, cdf_to_pmf, preprocess, return_cdf
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -27,7 +27,6 @@ class Apriori:
 
     def __init__(
         self,
-        lengths: np.ndarray = np.arange(15, 81 + 3, 3).astype(int),
         nmax: int = int(1e5),
         precision: float = 1.0,
         sensitivity: float = 1.0,
@@ -35,7 +34,8 @@ class Apriori:
         specie: str = "human",
         silent: bool = False,
         paired: bool = False,
-        selection_cdfs: float = 0.02,
+        null_model:str = "vjl",
+        recenter_mean:bool=False,
     ) -> None:
         """Initialize attributes to later run class methods.
 
@@ -52,7 +52,6 @@ class Apriori:
             silent (bool) : If true do not to show progress bars.
             paired (bool) : If true use null distributions over paired chain sequences.
         """
-        self.lengths = lengths
         self.nmax = nmax
         self.threads = threads if threads > 0 else cpu_count()
         self.precision = precision - 1e-4
@@ -62,14 +61,32 @@ class Apriori:
         self.histograms = None
         self.mean_prevalence = None
         self.mean_mean_distance = None
-        self.selection_cdfs = selection_cdfs
         self.check_translation = False
         self.specie=specie
-        self.check_translation = self.specie=="mouse"
+        self.null_model = null_model
+        self.recenter_mean=recenter_mean
         if not paired:
+            if specie=="human":
+                self.lengths=np.arange(15, 81 + 3, 3).astype(int)
+            elif specie=="mouse":
+                self.lengths=np.arange(12, 66 + 3, 3).astype(int)
+            else:
+                msg = f"Unknown specie : {specie}"
+                raise ValueError(msg)
             self.cdf_path=Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{specie}_vjl.parquet")
         else:
+            self.null_model="l"
+            if specie=="human":
+                self.lengths = np.arange(57, 144 + 3, 3).astype(int)
+            elif specie=="mouse":
+                msg = "Paired method for mouse not implemented yet."
+                raise ValueError(msg)
+            else:
+                msg = f"Unknown specie : {specie}"
+                raise ValueError(msg)
+
             self.cdf_path=Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
+
         self.classes = pd.DataFrame()
 
     def preprocess(self, df: pd.DataFrame, df_kappa: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -86,10 +103,21 @@ class Apriori:
         -------
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
+        if self.specie=="mouse" and self.paired: # to remove when implemented
+            msg="Paired method not working for mouse specie yet"
+            raise ValueError(msg)
         df = preprocess(
             df,
             silent=self.silent,
         )
+        if self.specie == "mouse" and "IGHJ0-7IA7" not in np.unique(df.j_gene):  # mouse translation to imgt
+                translation_df = pd.read_csv(Path(os.path.dirname(__file__)) / Path("cdfs/mouse_ogrdb2imgt.csv"))
+                translation_dict = dict(
+                    zip(translation_df.values[:, 0], translation_df.values[:, 1])
+                )
+                translation_dict[np.nan] = np.nan
+                df.j_gene = df.j_gene.apply(lambda x: translation_dict[x])
+                df.v_gene = df.v_gene.apply(lambda x: translation_dict[x])
         if self.paired:
             df_kappa = preprocess(df_kappa, silent=self.silent)
             for column in df.columns:
@@ -100,7 +128,7 @@ class Apriori:
                 df[column] = df[column + "_h"] + df[column + "_k"]
         return df
 
-    def vjls2x(self, args: tuple[int, pd.DataFrame]):
+    def vjls2x(self, args: tuple[int, pd.DataFrame])->pd.DataFrame:
         """Compute histogram for a given VJl class."""
         i, df = args
         xs = []
@@ -152,35 +180,6 @@ class Apriori:
         results["class_id"] = results.index
         return results
 
-    def select_cdfs(self) -> None:
-        """Selects VJL only CDFs with large differences with respect to JL CDFs and
-        that are present in the data.
-
-        Returns
-        -------
-            None
-        """
-        log.debug(
-            "Select CDFs for the analysis.",
-        )
-        selected_dfs = applyParallel(
-            self.cdfs.groupby(["j_gene", "cdr3_length"]),
-            func=select_df,
-            cpuCount=self.threads,
-            silent=True,
-        )
-        v_gene_nans = self.cdfs.isna().v_gene
-        j_gene_nans = self.cdfs.isna().j_gene
-        jdf = self.cdfs.loc[np.logical_and(v_gene_nans, ~j_gene_nans)]
-        ldf = self.cdfs.loc[np.logical_and(v_gene_nans, j_gene_nans)]
-        self.cdfs = pd.concat([selected_dfs, jdf, ldf]).reset_index(drop=True)
-        m = self.cdfs.fillna("None")[["v_gene", "j_gene", "cdr3_length"]]
-        m["index_values"] = m.index.values
-        index = m.merge(self.classes[["v_gene", "j_gene", "cdr3_length"]]).index_values
-        self.cdfs = self.cdfs.iloc[index].reset_index(
-            drop=True
-        )  # This is a hack to avoid memory issues
-
     def get_histograms(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute histograms for all large classes.
 
@@ -197,7 +196,7 @@ class Apriori:
         )[["class_id"] + [*range(self.lengths[-1] + 1)]]
         return self.histograms
 
-    def estimate(self, args: tuple[tuple[int], pd.DataFrame]) -> pd.DataFrame:
+    def estimate(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Fit prevalence and mu using the histogram which is the distribution of distances.
 
         Args:
@@ -208,58 +207,94 @@ class Apriori:
             pd.DataFrame: dataframe with parameters for each class id.
         """
         class_id, h = args
+        if not isinstance(class_id, int):
+            class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         l = classes_temp.cdr3_length.values[0]
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
-        cdf_df = pd.read_parquet(
-            self.cdf_path,
-            filters=[
-                ("v_gene", "==", v_gene),
-                ("j_gene", "==", j_gene),
-                ("cdr3_length","==",l)
-                    ]
-                )
-        if  cdf_df.empty :
-            cdf_df = pd.read_parquet(
-                self.cdf_path,
-                filters=[
-                    ("j_gene", "==", j_gene),
-                    ("cdr3_length","==",l)
-                        ]
-                    )
-        if cdf_df.empty :
-            cdf_df = pd.read_parquet(
-                self.cdf_path,
-                filters=[
-                    ("cdr3_length","==",l)
-                        ]
-                    )
-        cdf_np=cdf_df.values[0,3:3+l]
-        em = EM(cdf=cdf_np, l=l, h=h.values[0, 1:], positives="geometric")
-        rho_geo, mu_geo = em.discreteEM()
-        error_geo = em.error([rho_geo, mu_geo])
-        em = EM(cdf=cdf_np, l=l, h=h.values[0, 1:], positives="poisson")
-        rho_poisson, mu_poisson = em.discreteEM()
-        error_poisson = em.error([rho_geo, mu_geo])
+        histo=h.values[0, 1:].astype(int)[: l + 1]
+        cdf_list=[]
+        names=[]
+        if self.null_model=="vjl": # probably a better way to code that
+            cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
+            cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
+            cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+            cdf_list.extend([cdf_df_vjl, cdf_df_jl, cdf_df_l])
+            names.extend(["VJL","JL","L"])
+        elif self.null_model=="jl":
+            cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
+            cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+            cdf_list.extend([cdf_df_jl, cdf_df_l])
+            names.extend(["JL","L"])
+        elif self.null_model=="l":
+            cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+            cdf_list.extend([cdf_df_l])
+            names.extend(["L"])
+        else:
+            msg=f"Unknown CDF null model : {self.null_model}"
+            raise ValueError(msg)
+
+        min_error=np.inf
+        best_cdf0 = cdf_list[-1].values[0,3:3+l+1]
+        best_rho=0
+        best_mu=0
+        null_model="None"
+        for i,cdf in enumerate(cdf_list):
+            if cdf.empty: # did not find null model for vjl or jl
+                continue
+            cdf0=cdf.values[0,3:3+l+1]
+            if self.recenter_mean: # change with truncated mean
+                histo_pmf = histo/histo.sum()
+                pmf0=cdf_to_pmf(cdf0)
+                shift = int(np.round(np.mean(histo_pmf[l//5:])-np.mean(pmf0[l//5:])))
+                new_pmf0 = np.empty_like(pmf0)
+                if shift>0:
+                    new_pmf0[:shift]=0
+                    new_pmf0[shift:]=pmf0[:-shift]
+                if shift<0:
+                    new_pmf0[shift:]=0
+                    new_pmf0[:shift]=pmf0[-shift:]
+
+                if shift!=0:
+                    cdf0 = np.cumsum(new_pmf0)
+
+            em = EM(cdf=cdf0, l=l, h=histo, positives="poisson")
+            rho_poisson, mu_poisson = em.discreteEM()
+            error = em.error([rho_poisson, mu_poisson])
+            if error<=min_error:
+                best_cdf0 = cdf.values[0,3:3+l+1]
+                min_error=error
+                best_rho = rho_poisson
+                best_mu = mu_poisson
+                null_model = names[i] # what null model is actually being used
+
+        prevalence=best_rho
+        bins = np.arange(l + 1)
+        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum()
+        p = best_cdf0 / cdf1
+        t_sens = (cdf1 < self.sensitivity).sum()
+        t_prec = (p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision).sum() - 1
+        t_prec = np.min([t_prec, t_sens], axis=0)
+
         result = pd.DataFrame(
             columns=[
                 "class_id",
-                "rho_geo",
-                "mu_geo",
-                "rho_poisson",
-                "mu_poisson",
-                "error_poisson",
-                "error_geo",
+                "prevalence",
+                "mu",
+                "error",
+                "t_prec",
+                "t_sens",
+                "null_model",
             ],
         )
-        result.class_id = [class_id[0]]
-        result.rho_geo = [rho_geo]
-        result.mu_geo = [mu_geo]
-        result.rho_poisson = [rho_poisson]
-        result.mu_poisson = [mu_poisson]
-        result.error_poisson = [error_poisson]
-        result.error_geo = [error_geo]
+        result.class_id = [class_id]
+        result.null_model = [null_model]
+        result.t_prec = [t_prec]
+        result.t_sens = [t_sens]
+        result.prevalence = [prevalence]
+        result.mu = [best_mu]
+        result.error = [min_error]
         return result
 
     def get_parameters(self) -> None:
@@ -272,141 +307,29 @@ class Apriori:
         log.debug(
             "Computing prevalence and mean distance for all classes",
         )
-        if self.check_translation:
-            if "IGHJ0-7IA7" not in np.unique(self.classes.j_gene):  # mouse translation to imgt
-                translation_df = pd.read_csv("~/mouse/victor_mouse/mouse_ogrdb2imgt.csv")
-                translation_dict = dict(
-                    zip(translation_df.values[:, 0], translation_df.values[:, 1])
-                )
-                translation_dict[np.nan] = np.nan
-                self.cdfs.j_gene = self.cdfs.j_gene.apply(lambda x: translation_dict[x])
-                if "v_gene" in self.cdfs.columns:
-                    self.cdfs.v_gene = self.cdfs.v_gene.apply(lambda x: translation_dict[x])
-
         parameters = applyParallel(
             self.histograms.groupby(["class_id"]),
             self.estimate,
             cpuCount=self.threads,
             silent=self.silent,
         ).reset_index(drop=True)
-
         self.classes.index = self.classes.class_id
         parameters.index = parameters.class_id
+        self.classes["prevalence"] = parameters["prevalence"]
+        self.classes["null_model"] = parameters["null_model"]
 
-        self.classes["prevalence"] = parameters[
-            [
-                "rho_poisson",
-                "rho_geo",
-            ]
-        ].min(axis=1)
-        self.classes["error_geo"] = parameters["error_geo"]
-        self.classes["error_poisson"] = parameters["error_poisson"]
-        self.classes["mean_distance"] = parameters["mu_poisson"] / self.classes["cdr3_length"]
+        self.classes["error"] = parameters["error"]
+        self.classes["mean_distance"] = parameters["mu"] / self.classes["cdr3_length"]
         self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2)
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
             0.04,
         )
+        self.classes["precise_threshold"]=parameters["t_prec"]
+        self.classes["sensitive_threshold"]=parameters["t_sens"]
+        self.classes["precise_threshold"] = self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
+        self.classes["sensitive_threshold"] = self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
 
-    def assign_precise_sensitive_thresholds(
-        self,
-        args: tuple[tuple[int], pd.DataFrame],
-    ) -> pd.DataFrame:
-        """Assign precise and sensitive thresholds to dataframe grouped by length.
-
-        Args:
-            args tuple[tuple[int],pd.DataFrame]: length, dataframe grouped by length.
-
-        Returns
-        -------
-            pd.DataFrame: Precise and sensitive thresholds.
-        """
-        _, ldf = args
-        _ = ldf.class_id.values[0]
-        v_gene = ldf.v_gene.values[0]
-        j_gene=ldf.j_gene.values[0]
-        cdr3_length = ldf.cdr3_length.values[0]
-        rho = ldf.effective_prevalence.values[0]
-        mu = ldf.effective_mean_distance.values[0] * cdr3_length
-        err_poisson = ldf.error_poisson.values[0]
-        err_geo = ldf.error_geo.values[0]
-        min_err = np.min([err_poisson, err_geo])
-        threshold_90 = cdr3_length // 10
-        threshold_80 = cdr3_length // 5
-
-        cdf_df = pd.read_parquet(
-            self.cdf_path,
-            filters=[
-                ("v_gene", "==", v_gene),
-                ("j_gene", "==", j_gene),
-                ("cdr3_length","==",cdr3_length)
-                    ]
-                )
-        if cdf_df.empty :
-            cdf_df = pd.read_parquet(
-                self.cdf_path,
-                filters=[
-                    ("j_gene", "==", j_gene),
-                    ("cdr3_length","==",cdr3_length)
-                        ]
-                    )
-        if cdf_df.empty :
-            cdf_df = pd.read_parquet(
-                self.cdf_path,
-                filters=[
-                    ("cdr3_length","==",cdr3_length)
-                        ]
-                    )
-        if cdf_df.empty:
-            ldf["precise_threshold"] = threshold_90
-            ldf["sensitive_threshold"] = threshold_80
-            return ldf[["precise_threshold", "sensitive_threshold"]]
-        else :
-            cdf0=cdf_df.values[0,3:3+cdr3_length+1]
-
-        bins = np.arange(cdr3_length + 1)
-        cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
-        p = cdf0 / cdf1
-        t_sens = (cdf1 < self.sensitivity).sum()
-        t_prec = (p < rho / (1 + 1e-5 - rho) * (1 - self.precision) / self.precision).sum() - 1
-        t_prec = np.min([t_prec, t_sens], axis=0)
-        ldf["precise_threshold"] = t_prec
-        ldf["sensitive_threshold"] = t_sens
-
-        if min_err > 0.1:
-            # at high error threhsold use default thresholds
-            ldf["precise_threshold"] = np.min([t_prec, threshold_90])
-            ldf["sensitive_threshold"] = np.min([t_sens, threshold_80])
-        return ldf[["precise_threshold", "sensitive_threshold"]]
-
-    def get_thresholds(self) -> None:
-        """
-        Assign thresholds using null distribution from model.
-
-        This method calculates and assigns precise and sensitive thresholds for each class
-        based on the null distribution from the model. It uses parallel processing to
-        speed up the computation by applying the `assign_precise_sensitive_thresholds`
-        function to groups of classes defined by their 'v_gene', 'j_gene', and 'cdr3_length'
-        attributes.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-        log.debug(
-            "Assign thresholds using null distribution from model.",
-        )
-        self.classes[["precise_threshold", "sensitive_threshold"]] = applyParallel(
-            self.classes.groupby(["v_gene", "j_gene", "cdr3_length"]),
-            self.assign_precise_sensitive_thresholds,
-            cpuCount=self.threads,
-            silent=self.silent,
-        )
-
-    def return_fit(self, class_id):
+    def return_fit(self, class_id:int):
         """
         Return fits of the distribution to the histogram data for a given class ID.
 
@@ -425,6 +348,9 @@ class Apriori:
             - hist_data_normalized (numpy.ndarray): The normalized histogram data for the class.
         """
         v = self.classes.loc[self.classes.class_id == class_id]
+        v_gene = v.v_gene.values[0]
+        j_gene=v.j_gene.values[0]
+        null_model = v.null_model.values[0]
         cdr3_length = v.cdr3_length.values[0]
         bins = np.arange(cdr3_length + 1)
         hist_data = self.histograms.loc[self.histograms.class_id == class_id].values[
@@ -432,12 +358,33 @@ class Apriori:
         ]
         mu = v.effective_mean_distance.values[0]
         prevalence = v.prevalence.values[0]
-        cdf0 = return_cdf(self.classes, self.cdfs, v.class_id.values[0], extend=1)
+
+        cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length)
+        cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
+        cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
+
+        mode=""
+        if self.null_model =="vjl" and not cdf_df_vjl.empty:
+            cdf_df = cdf_df_vjl
+            mode="VJL"
+        elif not cdf_df_jl.empty:
+            cdf_df = cdf_df_jl
+            mode="JL"
+        elif not cdf_df_l.empty:
+            mode="L"
+            cdf_df = cdf_df_l
+        else:
+            msg=f"CDR3 length {cdr3_length} not available in CDFs."
+            raise ValueError(msg)
+
+        cdf0=cdf_df.values[0,3:3+cdr3_length+1]
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
         fitted_distribution = prevalence * poisson.pmf(bins, mu * cdr3_length) + (
             1 - prevalence
         ) * cdf_to_pmf(cdf0)
         return (
+            null_model,
+            mode,
             bins,
             cdf_to_pmf(cdf0),
             cdf_to_pmf(cdf1),

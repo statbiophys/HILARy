@@ -28,10 +28,10 @@ class EM:
             howmany (int, optional): Hopw many iterations to run for expectmax algo. Defaults to 10.
             positives (str, optional): Distribution to choose for P1. Defaults to "poisson".
         """
-        self.l = len(cdf)
-        self.h = h.astype(int)[: self.l + 1]
+        self.cdf = cdf[:-1]
+        self.l = len(self.cdf)
+        self.h = h
         self.b = np.arange(self.l + 1, dtype=int)
-        self.cdf = cdf
         self.const_p0 = self.readNull()
         self.howmany = howmany
         self.positives = positives
@@ -103,14 +103,10 @@ class EM:
             return rho * mu**x * np.exp(-mu) / factorial(x) + (1 - rho) * self.const_p0[x]
 
     def error(self, theta):
-        """Estimate goodness of fit
+        """Estimate goodness of fit.
+
         By default returns rescaled root MSE.
         """
         y1 = self.h / sum(self.h)
         y2 = self.discreteMix(self.b, theta)
-        mask = self.b < 0.2 * self.l
-        y1m, y2m = y1[mask], y2[mask]
-
-        mse = ((y1m - y2m) ** 2).sum()
-        rrmse = np.sqrt(mse)
-        return rrmse
+        return np.sqrt(((y1 - y2) ** 2).sum())

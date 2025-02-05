@@ -106,11 +106,9 @@ def crude_method(
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
         dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
         dataframe_kappa.set_index("sequence_id")
-        lengths = np.arange(57, 144 + 3, 3).astype(int)
         paired = True
     else:
         dataframe_kappa = None
-        lengths = np.arange(15, 81 + 3, 3).astype(int)
 
     if verbose >= 2:
         input_path = debug_folder / Path(f"input_{data_path.name}")
@@ -121,7 +119,6 @@ def crude_method(
         save_dataframe(dataframe=dataframe, save_path=input_path)
     apriori = Apriori(
         paired=paired,
-        lengths=lengths,
         threads=threads,
     )
     dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=dataframe_kappa)
@@ -256,15 +253,12 @@ def cdr3_method(
         dataframe_kappa = read_input(input_path=kappa_file, config=config)
         dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
         dataframe_kappa.set_index("sequence_id")
-        lengths = np.arange(57, 144 + 3, 3).astype(int)
         paired = True
     else:
         dataframe_kappa = None
-        lengths = np.arange(15, 81 + 3, 3).astype(int)
 
     apriori = Apriori(
         paired=paired,
-        lengths=lengths,
         threads=threads,
         precision=precision,
         sensitivity=sensitivity,
@@ -284,8 +278,6 @@ def cdr3_method(
     log.info("⏳ COMPUTING PARAMETERS ⏳.")
     apriori.get_parameters()
 
-    log.info("⏳ COMPUTING THRESHOLDS ⏳.")
-    apriori.get_thresholds()
     if verbose >= 2:
         parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
         log.debug(

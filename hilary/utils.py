@@ -28,93 +28,43 @@ def cdf_to_pmf(cdf_values):
     Parameters
     ----------
     cdf_values (array-like): A list or array of CDF values. The CDF must start at 0 (implicitly)
-                             and end at 1. The values must be non-decreasing.
+                            and end at 1. The values must be non-decreasing.
 
     Returns
     -------
     array-like: An array of PMF values, which are the differences between consecutive CDF values.
     """
-    if cdf_values[0] < 0 or cdf_values[-1] != 1.0:
-        msg = "CDF must start at 0 (implicitly) and end at 1."
-        raise ValueError(msg)
     if not np.all(np.diff(cdf_values) >= 0):
         msg = "CDF values must be non-decreasing."
         raise ValueError(msg)
 
     # PMF is the difference between consecutive CDF values
-    pmf_values = np.diff(cdf_values, prepend=0)  # Prepend 0 for the first element
+    pmf_values = np.diff(cdf_values, prepend=[0])  # Prepend 0 for the first element
     return pmf_values
 
-def select_df(args):
-    """
-    Selects rows from a DataFrame based on a given selection strength.
+
+def return_cdf(cdf_path:Path, v_gene:str, j_gene:str, cdr3_length:int) -> pd.DataFrame:
+    """Return cdf distribution given VJl class.
+
     Args:
-        args (tuple): A tuple containing:
-            - (j_gene, cdr3_length): A tuple of the gene and CDR3 length to filter on.
-            - sel1 (DataFrame): The DataFrame to filter.
+        cdf_path (Path): Where to get the distributions.
+        v_gene (str): V gene
+        j_gene (str): J gene
+        cdr3_length (int): CDR3 length
 
     Returns
     -------
-        DataFrame: A filtered DataFrame where the mean absolute difference between
-        the values in sel1 and the corresponding values in sel2 is greater than
-        the selection strength.
+        pd.DataFrame: _description_
     """
-    selection_strength = 0.01 # find out a way to pass this as an argument
-    (_,_),cdfs = args
-    v_gene_nans=cdfs.isna().v_gene
-    j_gene_nans=cdfs.isna().j_gene
-    sel1=cdfs.loc[np.logical_and(~v_gene_nans,~j_gene_nans)]
-    sel2=cdfs.loc[np.logical_and(v_gene_nans,~j_gene_nans)]
-    select=np.abs(sel1.values[:,3:]-sel2.values[:,3:]).mean(axis=1) > selection_strength
-    return sel1[select]
-
-def return_cdf(classes: pd.DataFrame, cdfs: pd.DataFrame, class_id: int, extend: int = 0) -> np.array:
-    """Class to extract the right cdf.
-
-    Args:
-        classes (pd.DataFrame): classes df (see apriori)
-        cdfs (pd.DataFrame): cdfs object (see apriori)
-        class_id (int): id of the class to return
-
-    Returns
-    -------
-        np.array: array encoding the cdf
-    """
-    cdr3_length = classes.loc[classes.class_id == class_id].cdr3_length.values[0]
-    if "v_gene" in cdfs.columns and "j_gene" in cdfs.columns:
-        cdr3_dfs = cdfs.loc[np.logical_and(cdfs["j_gene"].isna(),cdfs["v_gene"].isna())]
-    elif "j_gene" in cdfs.columns:
-        cdr3_dfs = cdfs.loc[cdfs["j_gene"].isna()]
-    else:
-        cdr3_dfs = cdfs
-    if cdr3_length > cdr3_dfs.cdr3_length.max():
-        cdr3_length = cdr3_dfs.cdr3_length.max()
-    elif cdr3_length < cdr3_dfs.cdr3_length.min():
-        cdr3_length = cdr3_dfs.cdr3_length.min()
-    if "v_gene" in cdfs.columns and "j_gene" in cdfs.columns:  ## use vjl cdf
-        j = classes.loc[classes.class_id == class_id].j_gene.values[0]
-        v = classes.loc[classes.class_id == class_id].v_gene.values[0]
-        sel_jl = np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"] == j)
-        sel = np.logical_and(sel_jl,cdfs["v_gene"] == v)
-        sel2 = np.logical_and(sel_jl,cdfs["v_gene"].isna())
-        if sum(sel) > 0:
-            cdf = cdfs.loc[sel].values[0, 3 : cdr3_length + 3 + extend]  ## found vjl cdf
-        elif sum(sel2) > 0:
-            cdf = cdfs.loc[sel2].values[0, 3 : cdr3_length + 3 + extend]  ## found jl cdf
-        else:
-            sel_na=np.logical_and(cdfs["v_gene"].isna(),cdfs["j_gene"].isna())
-            cdf = cdfs.loc[np.logical_and(sel_na,cdfs["cdr3_length"] == cdr3_length)].values[0, 3 : cdr3_length + 3 + extend]
-    elif "j_gene" in cdfs.columns: ## use jl cdf
-        j = classes.loc[classes.class_id == class_id].j_gene.values[0]
-        sel = np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"] == j)
-        if sum(sel) > 0:
-            cdf = cdfs.loc[sel].values[0, 2 : cdr3_length + 2 + extend]  ## found jl cdf
-        else:
-            sel= np.logical_and(cdfs["cdr3_length"] == cdr3_length, cdfs["j_gene"].isna())
-            cdf = cdfs.loc[sel].values[0, 2 : cdr3_length + 2 + extend]
-    else: ## use l cdf
-        cdf = cdfs.loc[cdfs["cdr3_length"] == cdr3_length].values[0, 1 : cdr3_length + 1 + extend]
-    return cdf
+    cdf_df = pd.read_parquet(
+        cdf_path,
+        filters=[
+            ("v_gene", "==", v_gene),
+            ("j_gene", "==", j_gene),
+            ("cdr3_length","==",cdr3_length)
+                ]
+            )
+    return cdf_df
 
 
 def applyParallel(
@@ -341,10 +291,11 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
             if r1 == r2:
                 TP += 1
 
-    if not TP_FP and P > 0:
-        return 0, 1.0
-    if not P:
-        return None, None
+
+    if P==0:
+        return 1,len(df[partition].unique())/len(df["ground_truth"].unique())
+    if  P > 0 and TP_FP==0:
+        return len(df["ground_truth"].unique())/len(df[partition].unique()), 1
     return TP / TP_FP, TP / P  # precision, sensitivity
 
 
