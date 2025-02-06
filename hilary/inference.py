@@ -355,7 +355,7 @@ class HILARy:
         ys = (n0s - exp_n0) / std_n0
         if null_model == 'VJL':
             cdf_df = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
-        if null_model == 'JL':
+        elif null_model == 'JL':
             cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
         else:
             cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
