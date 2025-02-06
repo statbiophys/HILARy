@@ -128,7 +128,7 @@ def check_performance_on_naive_mouse_data():
     )
     dataframe["sequence_id"] = dataframe.index.astype("str")
     apriori = Apriori(
-        silent=False, threads=-1, precision=1, sensitivity=0.95, specie="mouse", null_model="l"
+        silent=False, threads=-1, precision=1, sensitivity=0.95, species="mouse", null_model="l"
     )  # show progress bars, use all threads
     dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
     apriori.classes = create_classes(dataframe_processed)

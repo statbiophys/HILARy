@@ -255,7 +255,6 @@ class Apriori:
                 if shift<0:
                     new_pmf0[shift:]=0
                     new_pmf0[:shift]=pmf0[-shift:]
-
                 if shift!=0:
                     cdf0 = np.cumsum(new_pmf0)
 
@@ -364,13 +363,13 @@ class Apriori:
         cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
 
         mode=""
-        if self.null_model =="vjl" and not cdf_df_vjl.empty:
+        if self.null_model == "vjl" and not cdf_df_vjl.empty:
             cdf_df = cdf_df_vjl
             mode="VJL"
-        elif not cdf_df_jl.empty:
+        elif self.null_model == "jl" and not cdf_df_jl.empty:
             cdf_df = cdf_df_jl
             mode="JL"
-        elif not cdf_df_l.empty:
+        elif self.null_model == "l" and not cdf_df_l.empty:
             mode="L"
             cdf_df = cdf_df_l
         else:

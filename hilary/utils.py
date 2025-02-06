@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
+def group_mutations(args):
+    _, df = args
+    v_gene, j_gene, cdr3_length, _ ,prevalence, class_id, null_model,alignment_length = df.iloc[0]
+    mutations=df["mutation_count"].values
+    return pd.DataFrame([v_gene,  j_gene,  cdr3_length, prevalence,  mutations,  alignment_length,  class_id, null_model,]).T
+
 # pylint: disable=invalid-name
 def cdf_to_pmf(cdf_values):
     """

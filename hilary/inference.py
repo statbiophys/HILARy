@@ -15,7 +15,7 @@ from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.utils import applyParallel, pRequired
+from hilary.utils import applyParallel, pRequired, return_cdf, group_mutations
 
 if TYPE_CHECKING:
     from hilary.apriori import Apriori
@@ -335,7 +335,7 @@ class HILARy:
         """
         np.random.seed(42)
         size = int(1e6)
-        (_, _, _, prevalence, mutations, alignment_length, class_id) = args
+        (_, _, _, prevalence, mutations, alignment_length, class_id,null_model)= args
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         l = classes_temp.cdr3_length.values[0]
         v_gene = classes_temp.v_gene.values[0]
@@ -353,29 +353,12 @@ class HILARy:
         n0s = np.random.poisson(lam=exp_n0, size=size)
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
-        cdf_df = pd.read_parquet(
-            self.cdf_path,
-            filters=[
-                ("v_gene", "==", v_gene),
-                ("j_gene", "==", j_gene),
-                ("cdr3_length","==",l)
-                    ]
-                )
-        if  cdf_df.empty :
-            cdf_df = pd.read_parquet(
-                self.cdf_path,
-                filters=[
-                    ("j_gene", "==", j_gene),
-                    ("cdr3_length","==",l)
-                        ]
-                    )
-        if cdf_df.empty :
-            cdf_df = pd.read_parquet(
-                self.cdf_path,
-                filters=[
-                    ("cdr3_length","==",l)
-                        ]
-                    )
+        if null_model == 'VJL':
+            cdf_df = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
+        if null_model == 'JL':
+            cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
+        else:
+            cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
         cdf_np=cdf_df.values[0,3:3+l]
         pn = np.diff(cdf_np, prepend=[0], append=[1]).astype(float)
         ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
@@ -389,7 +372,7 @@ class HILARy:
             class_id,
         )
 
-    def get_xy_thresholds(self, df) -> None:
+    def get_xy_thresholds(self, df: pd.DataFrame) -> None:
         """Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.
 
         Args:
@@ -399,57 +382,32 @@ class HILARy:
         -------
             None
         """
+
         alignment_length = len(df["alt_sequence_alignment"].values[0])
-        mutations_grouped = []
         # we should parallelize this for loop, it is currently a bottleneck on my side
         log.debug(
             "Group mutations by (v_gene,j_gene,cdr3_length) and compute xy_thresholds.",
         )
-        for (
-            v_gene,
-            j_gene,
-            cdr3_length,
-            prevalence,
-            class_id,
-        ) in tqdm(
-            self.classes[
-                [
-                    "v_gene",
-                    "j_gene",
-                    "cdr3_length",
-                    "effective_prevalence",
-                    "class_id",
-                ]
-            ].values
-        ):
-            if v_gene == "None":
-                mutations = df.query("cdr3_length==@cdr3_length")["mutation_count"]
-            else:
-                mutations = df.query(
-                    "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
-                )["mutation_count"]
-            mutations_grouped.append(
-                (
-                    v_gene,
-                    j_gene,
-                    cdr3_length,
-                    prevalence,
-                    mutations,
-                    alignment_length,
-                    class_id,
-                )
-            )
+        self.classes["alignment_length"] = alignment_length
+        merged=df[["v_gene", "j_gene", "cdr3_length", "mutation_count"]].merge(
+            self.classes[["v_gene", "j_gene", "cdr3_length", "effective_prevalence",  "class_id",  "null_model", "alignment_length"]])
+        mutations_grouped = applyParallel(
+            merged.groupby('class_id'),
+            group_mutations,
+            cpuCount=self.threads,
+            silent=self.silent,
+        )
+        
         log.debug(
             "Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.",
         )
         result = applyParallel(
-            mutations_grouped,
+            mutations_grouped.values,
             self.simulate_xs_ys,
             cpuCount=self.threads,
             silent=self.silent,
             isint=True,
         )
-
         thresholds_data = pd.DataFrame(result, columns=["xy_threshold", "class_id"]).set_index(
             "class_id"
         )
@@ -615,8 +573,9 @@ class HILARy:
             log.info("No classes passed to xy method.")
         else:
             log.debug("Marking classes to resolve.")
+            grouped_df=df.groupby(self.group)
             df["to_resolve"] = applyParallel(
-                [df.groupby(self.group).get_group(g) for g in self.remaining],
+                [grouped_df.get_group(g) for g in self.remaining],
                 self.mark_class,
                 silent=self.silent,
                 cpuCount=self.threads,
@@ -669,7 +628,7 @@ class HILARy:
         )
         log.debug("Inferring family clusters for large groups.")
         large_dict = {}
-        for g in large_to_do:
+        for g in tqdm(large_to_do):
             v_gene, j_gene, l, sensitive_cluster = g
             xy_threshold = self.classes.query(
                 "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
