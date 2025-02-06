@@ -31,12 +31,12 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        specie: str = "human",
+        species:  str = "human",
         silent: bool = False,
         paired: bool = False,
         null_model:str = "vjl",
         recenter_mean:bool=False,
-    ) -> None:
+        ) -> None:
         """Initialize attributes to later run class methods.
 
         Args:
@@ -48,7 +48,7 @@ class Apriori:
             sensitivity (float, optional): Desired sensitivity, defaults to 1.
             threads (int, optional): Number of cpus on which to run code, defaults to 1. -1 to use
             all available cpus.
-            specie (str) : Specie of the repertoire.
+            species  (str) : species  of the repertoire.
             silent (bool) : If true do not to show progress bars.
             paired (bool) : If true use null distributions over paired chain sequences.
         """
@@ -62,27 +62,27 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.check_translation = False
-        self.specie=specie
+        self.species = species
         self.null_model = null_model
         self.recenter_mean=recenter_mean
         if not paired:
-            if specie=="human":
+            if species =="human":
                 self.lengths=np.arange(15, 81 + 3, 3).astype(int)
-            elif specie=="mouse":
+            elif species =="mouse":
                 self.lengths=np.arange(12, 66 + 3, 3).astype(int)
             else:
-                msg = f"Unknown specie : {specie}"
+                msg = f"Unknown species: {species}"
                 raise ValueError(msg)
-            self.cdf_path=Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{specie}_vjl.parquet")
+            self.cdf_path=Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{species}_vjl.parquet")
         else:
             self.null_model="l"
-            if specie=="human":
+            if species =="human":
                 self.lengths = np.arange(57, 144 + 3, 3).astype(int)
-            elif specie=="mouse":
+            elif species =="mouse":
                 msg = "Paired method for mouse not implemented yet."
                 raise ValueError(msg)
             else:
-                msg = f"Unknown specie : {specie}"
+                msg = f"Unknown species      : {species     }"
                 raise ValueError(msg)
 
             self.cdf_path=Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
@@ -103,14 +103,14 @@ class Apriori:
         -------
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        if self.specie=="mouse" and self.paired: # to remove when implemented
-            msg="Paired method not working for mouse specie yet"
+        if self.species == "mouse" and self.paired: # to remove when implemented
+            msg="Paired method not working for mouse species  yet"
             raise ValueError(msg)
         df = preprocess(
             df,
             silent=self.silent,
         )
-        if self.specie == "mouse" and "IGHJ0-7IA7" not in np.unique(df.j_gene):  # mouse translation to imgt
+        if self.species == "mouse" and "IGHJ0-7IA7" not in np.unique(df.j_gene):  # mouse translation to imgt
                 translation_df = pd.read_csv(Path(os.path.dirname(__file__)) / Path("cdfs/mouse_ogrdb2imgt.csv"))
                 translation_dict = dict(
                     zip(translation_df.values[:, 0], translation_df.values[:, 1])
