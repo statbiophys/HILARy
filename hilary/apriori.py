@@ -36,6 +36,7 @@ class Apriori:
         paired: bool = False,
         null_model:str = "vjl",
         recenter_mean:bool=False,
+        infer_cdf: bool = True
         ) -> None:
         """Initialize attributes to later run class methods.
 
@@ -64,6 +65,7 @@ class Apriori:
         self.check_translation = False
         self.species = species
         self.null_model = null_model
+        self.infer_cdf=infer_cdf
         self.recenter_mean=recenter_mean
         if not paired:
             if species =="human":
@@ -211,29 +213,48 @@ class Apriori:
             class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         l = classes_temp.cdr3_length.values[0]
+        l = np.clip(l,np.min(self.lengths),np.max(self.lengths))
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
         histo=h.values[0, 1:].astype(int)[: l + 1]
         cdf_list=[]
         names=[]
-        if self.null_model=="vjl": # probably a better way to code that
+        if self.infer_cdf:
+            if self.null_model=="vjl": # probably a better way to code that
+                cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
+                cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
+                cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+                cdf_list.extend([cdf_df_vjl, cdf_df_jl, cdf_df_l])
+                names.extend(["VJL","JL","L"])
+            elif self.null_model=="jl":
+                cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
+                cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+                cdf_list.extend([cdf_df_jl, cdf_df_l])
+                names.extend(["JL","L"])
+            elif self.null_model=="l":
+                cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+                cdf_list.extend([cdf_df_l])
+                names.extend(["L"])
+            else:
+                msg=f"Unknown CDF null model : {self.null_model}"
+                raise ValueError(msg)
+        else:
             cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
             cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
             cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
-            cdf_list.extend([cdf_df_vjl, cdf_df_jl, cdf_df_l])
-            names.extend(["VJL","JL","L"])
-        elif self.null_model=="jl":
-            cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
-            cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
-            cdf_list.extend([cdf_df_jl, cdf_df_l])
-            names.extend(["JL","L"])
-        elif self.null_model=="l":
-            cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
-            cdf_list.extend([cdf_df_l])
-            names.extend(["L"])
-        else:
-            msg=f"Unknown CDF null model : {self.null_model}"
-            raise ValueError(msg)
+
+            if self.null_model == "vjl" and (not cdf_df_vjl.empty): # probably a better way to code that
+                cdf_list.extend([cdf_df_vjl])
+                names.extend(["VJL"])
+            elif (self.null_model in ["vjl",'jl']) and (not cdf_df_jl.empty) :
+                cdf_list.extend([cdf_df_jl])
+                names.extend(["JL"])
+            elif self.null_model in ["vjl",'jl','l'] and (not cdf_df_l.empty):
+                cdf_list.extend([cdf_df_l])
+                names.extend(["L"])
+            else:
+                msg=f"Unknown CDF null model : {self.null_model}"
+                raise ValueError(msg)
 
         min_error=np.inf
         best_cdf0 = cdf_list[-1].values[0,3:3+l+1]
