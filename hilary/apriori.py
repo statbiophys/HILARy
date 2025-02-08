@@ -31,13 +31,13 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        species:  str = "human",
+        species: str = "human",
         silent: bool = False,
         paired: bool = False,
-        null_model:str = "vjl",
-        recenter_mean:bool=False,
-        infer_cdf: bool = True
-        ) -> None:
+        null_model: str = "vjl",
+        recenter_mean: bool = False,
+        infer_cdf: bool = True,
+    ) -> None:
         """Initialize attributes to later run class methods.
 
         Args:
@@ -65,29 +65,31 @@ class Apriori:
         self.check_translation = False
         self.species = species
         self.null_model = null_model
-        self.infer_cdf=infer_cdf
-        self.recenter_mean=recenter_mean
+        self.infer_cdf = infer_cdf
+        self.recenter_mean = recenter_mean
         if not paired:
-            if species =="human":
-                self.lengths=np.arange(15, 81 + 3, 3).astype(int)
-            elif species =="mouse":
-                self.lengths=np.arange(12, 66 + 3, 3).astype(int)
+            if species == "human":
+                self.lengths = np.arange(15, 81 + 3, 3).astype(int)
+            elif species == "mouse":
+                self.lengths = np.arange(12, 66 + 3, 3).astype(int)
             else:
                 msg = f"Unknown species: {species}"
                 raise ValueError(msg)
-            self.cdf_path=Path(os.path.dirname(__file__)) / Path(f"cdfs/cdfs_{species}_vjl.parquet")
+            self.cdf_path = Path(os.path.dirname(__file__)) / Path(
+                f"cdfs/cdfs_{species}_vjl.parquet"
+            )
         else:
-            self.null_model="l"
-            if species =="human":
+            self.null_model = "l"
+            if species == "human":
                 self.lengths = np.arange(57, 144 + 3, 3).astype(int)
-            elif species =="mouse":
+            elif species == "mouse":
                 msg = "Paired method for mouse not implemented yet."
                 raise ValueError(msg)
             else:
                 msg = f"Unknown species      : {species     }"
                 raise ValueError(msg)
 
-            self.cdf_path=Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
+            self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
 
         self.classes = pd.DataFrame()
 
@@ -105,21 +107,23 @@ class Apriori:
         -------
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        if self.species == "mouse" and self.paired: # to remove when implemented
-            msg="Paired method not working for mouse species  yet"
+        if self.species == "mouse" and self.paired:  # to remove when implemented
+            msg = "Paired method not working for mouse species  yet"
             raise ValueError(msg)
         df = preprocess(
             df,
             silent=self.silent,
         )
-        if self.species == "mouse" and "IGHJ0-7IA7" not in np.unique(df.j_gene):  # mouse translation to imgt
-                translation_df = pd.read_csv(Path(os.path.dirname(__file__)) / Path("cdfs/mouse_ogrdb2imgt.csv"))
-                translation_dict = dict(
-                    zip(translation_df.values[:, 0], translation_df.values[:, 1])
-                )
-                translation_dict[np.nan] = np.nan
-                df.j_gene = df.j_gene.apply(lambda x: translation_dict[x])
-                df.v_gene = df.v_gene.apply(lambda x: translation_dict[x])
+        if self.species == "mouse" and "IGHJ0-7IA7" not in np.unique(
+            df.j_gene
+        ):  # mouse translation to imgt
+            translation_df = pd.read_csv(
+                Path(os.path.dirname(__file__)) / Path("cdfs/mouse_ogrdb2imgt.csv")
+            )
+            translation_dict = dict(zip(translation_df.values[:, 0], translation_df.values[:, 1]))
+            translation_dict[np.nan] = np.nan
+            df.j_gene = df.j_gene.apply(lambda x: translation_dict[x])
+            df.v_gene = df.v_gene.apply(lambda x: translation_dict[x])
         if self.paired:
             df_kappa = preprocess(df_kappa, silent=self.silent)
             for column in df.columns:
@@ -130,7 +134,7 @@ class Apriori:
                 df[column] = df[column + "_h"] + df[column + "_k"]
         return df
 
-    def vjls2x(self, args: tuple[int, pd.DataFrame])->pd.DataFrame:
+    def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class."""
         i, df = args
         xs = []
@@ -213,88 +217,92 @@ class Apriori:
             class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         l = classes_temp.cdr3_length.values[0]
-        l = np.clip(l,np.min(self.lengths),np.max(self.lengths))
+        l = np.clip(l, np.min(self.lengths), np.max(self.lengths))
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
-        histo=h.values[0, 1:].astype(int)[: l + 1]
-        cdf_list=[]
-        names=[]
+        histo = h.values[0, 1:].astype(int)[: l + 1]
+        cdf_list = []
+        names = []
         if self.infer_cdf:
-            if self.null_model=="vjl": # probably a better way to code that
+            if self.null_model == "vjl":  # probably a better way to code that
                 cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
                 cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
                 cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
                 cdf_list.extend([cdf_df_vjl, cdf_df_jl, cdf_df_l])
-                names.extend(["VJL","JL","L"])
-            elif self.null_model=="jl":
+                names.extend(["VJL", "JL", "L"])
+            elif self.null_model == "jl":
                 cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
                 cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
                 cdf_list.extend([cdf_df_jl, cdf_df_l])
-                names.extend(["JL","L"])
-            elif self.null_model=="l":
+                names.extend(["JL", "L"])
+            elif self.null_model == "l":
                 cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
                 cdf_list.extend([cdf_df_l])
                 names.extend(["L"])
             else:
-                msg=f"Unknown CDF null model : {self.null_model}"
+                msg = f"Unknown CDF null model : {self.null_model}"
                 raise ValueError(msg)
         else:
             cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
             cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
             cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
 
-            if self.null_model == "vjl" and (not cdf_df_vjl.empty): # probably a better way to code that
+            if self.null_model == "vjl" and (
+                not cdf_df_vjl.empty
+            ):  # probably a better way to code that
                 cdf_list.extend([cdf_df_vjl])
                 names.extend(["VJL"])
-            elif (self.null_model in ["vjl",'jl']) and (not cdf_df_jl.empty) :
+            elif (self.null_model in ["vjl", "jl"]) and (not cdf_df_jl.empty):
                 cdf_list.extend([cdf_df_jl])
                 names.extend(["JL"])
-            elif self.null_model in ["vjl",'jl','l'] and (not cdf_df_l.empty):
+            elif self.null_model in ["vjl", "jl", "l"] and (not cdf_df_l.empty):
                 cdf_list.extend([cdf_df_l])
                 names.extend(["L"])
             else:
-                msg=f"Unknown CDF null model : {self.null_model}"
+                msg = f"Unknown CDF null model : {self.null_model}"
                 raise ValueError(msg)
 
-        min_error=np.inf
-        best_cdf0 = cdf_list[-1].values[0,3:3+l+1]
-        best_rho=0
-        best_mu=0
-        null_model="None"
-        for i,cdf in enumerate(cdf_list):
-            if cdf.empty: # did not find null model for vjl or jl
+        min_error = np.inf
+        best_cdf0 = cdf_list[-1].values[0, 3 : 3 + l + 1]
+        best_rho = 0
+        best_mu = 0
+        null_model = "None"
+        for i, cdf in enumerate(cdf_list):
+            if cdf.empty:  # did not find null model for vjl or jl
                 continue
-            cdf0=cdf.values[0,3:3+l+1]
-            if self.recenter_mean: # change with truncated mean
-                histo_pmf = histo/histo.sum()
-                pmf0=cdf_to_pmf(cdf0)
-                shift = int(np.round(np.mean(histo_pmf[l//5:])-np.mean(pmf0[l//5:])))
+            cdf0 = cdf.values[0, 3 : 3 + l + 1]
+            if self.recenter_mean:  # change with truncated mean
+                histo_pmf = histo / histo.sum()
+                pmf0 = cdf_to_pmf(cdf0)
+                shift = int(np.round(np.mean(histo_pmf[l // 5 :]) - np.mean(pmf0[l // 5 :])))
                 new_pmf0 = np.empty_like(pmf0)
-                if shift>0:
-                    new_pmf0[:shift]=0
-                    new_pmf0[shift:]=pmf0[:-shift]
-                if shift<0:
-                    new_pmf0[shift:]=0
-                    new_pmf0[:shift]=pmf0[-shift:]
-                if shift!=0:
+                if shift > 0:
+                    new_pmf0[:shift] = 0
+                    new_pmf0[shift:] = pmf0[:-shift]
+                if shift < 0:
+                    new_pmf0[shift:] = 0
+                    new_pmf0[:shift] = pmf0[-shift:]
+                if shift != 0:
                     cdf0 = np.cumsum(new_pmf0)
 
             em = EM(cdf=cdf0, l=l, h=histo, positives="poisson")
             rho_poisson, mu_poisson = em.discreteEM()
             error = em.error([rho_poisson, mu_poisson])
-            if error<=min_error:
-                best_cdf0 = cdf.values[0,3:3+l+1]
-                min_error=error
+            if error <= min_error:
+                best_cdf0 = cdf.values[0, 3 : 3 + l + 1]
+                min_error = error
                 best_rho = rho_poisson
                 best_mu = mu_poisson
-                null_model = names[i] # what null model is actually being used
+                null_model = names[i]  # what null model is actually being used
 
-        prevalence=best_rho
+        prevalence = best_rho
         bins = np.arange(l + 1)
         cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum()
         p = best_cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
-        t_prec = (p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision).sum() - 1
+        t_prec = (
+            p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision
+        ).sum() - 1
         t_prec = np.min([t_prec, t_sens], axis=0)
 
         result = pd.DataFrame(
@@ -344,12 +352,16 @@ class Apriori:
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
             0.04,
         )
-        self.classes["precise_threshold"]=parameters["t_prec"]
-        self.classes["sensitive_threshold"]=parameters["t_sens"]
-        self.classes["precise_threshold"] = self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
-        self.classes["sensitive_threshold"] = self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
+        self.classes["precise_threshold"] = parameters["t_prec"]
+        self.classes["sensitive_threshold"] = parameters["t_sens"]
+        self.classes["precise_threshold"] = (
+            self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
+        )
+        self.classes["sensitive_threshold"] = (
+            self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
+        )
 
-    def return_fit(self, class_id:int):
+    def return_fit(self, class_id: int):
         """
         Return fits of the distribution to the histogram data for a given class ID.
 
@@ -369,7 +381,7 @@ class Apriori:
         """
         v = self.classes.loc[self.classes.class_id == class_id]
         v_gene = v.v_gene.values[0]
-        j_gene=v.j_gene.values[0]
+        j_gene = v.j_gene.values[0]
         null_model = v.null_model.values[0]
         cdr3_length = v.cdr3_length.values[0]
         bins = np.arange(cdr3_length + 1)
@@ -379,25 +391,27 @@ class Apriori:
         mu = v.effective_mean_distance.values[0]
         prevalence = v.prevalence.values[0]
 
-        cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length)
+        cdf_df_vjl = return_cdf(
+            self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
+        )
         cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
         cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
 
-        mode=""
+        mode = ""
         if self.null_model == "vjl" and not cdf_df_vjl.empty:
             cdf_df = cdf_df_vjl
-            mode="VJL"
+            mode = "VJL"
         elif self.null_model == "jl" and not cdf_df_jl.empty:
             cdf_df = cdf_df_jl
-            mode="JL"
+            mode = "JL"
         elif self.null_model == "l" and not cdf_df_l.empty:
-            mode="L"
+            mode = "L"
             cdf_df = cdf_df_l
         else:
-            msg=f"CDR3 length {cdr3_length} not available in CDFs."
+            msg = f"CDR3 length {cdr3_length} not available in CDFs."
             raise ValueError(msg)
 
-        cdf0=cdf_df.values[0,3:3+cdr3_length+1]
+        cdf0 = cdf_df.values[0, 3 : 3 + cdr3_length + 1]
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
         fitted_distribution = prevalence * poisson.pmf(bins, mu * cdr3_length) + (
             1 - prevalence
