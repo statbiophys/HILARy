@@ -36,7 +36,7 @@ class Apriori:
         paired: bool = False,
         null_model: str = "vjl",
         recenter_mean: bool = False,
-        infer_cdf: bool = True,
+        infer_cdf: bool = False,
     ) -> None:
         """Initialize attributes to later run class methods.
 
@@ -401,10 +401,10 @@ class Apriori:
         if self.null_model == "vjl" and not cdf_df_vjl.empty:
             cdf_df = cdf_df_vjl
             mode = "VJL"
-        elif self.null_model == "jl" and not cdf_df_jl.empty:
+        elif self.null_model in ["jl","vjl"] and not cdf_df_jl.empty:
             cdf_df = cdf_df_jl
             mode = "JL"
-        elif self.null_model == "l" and not cdf_df_l.empty:
+        elif self.null_model ["jl","vjl","l"]  and not cdf_df_l.empty:
             mode = "L"
             cdf_df = cdf_df_l
         else:
@@ -412,12 +412,13 @@ class Apriori:
             raise ValueError(msg)
 
         cdf0 = cdf_df.values[0, 3 : 3 + cdr3_length + 1]
-        cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
-        fitted_distribution = prevalence * poisson.pmf(bins, mu * cdr3_length) + (
+        scaled_mu=mu*cdr3_length
+        cdf1 = ((scaled_mu**bins * np.exp(-scaled_mu)) / factorial(bins)).cumsum()
+        fitted_distribution = prevalence * poisson.pmf(bins, scaled_mu) + (
             1 - prevalence
         ) * cdf_to_pmf(cdf0)
         return (
-            null_model,
+            self.null_model,
             mode,
             bins,
             cdf_to_pmf(cdf0),

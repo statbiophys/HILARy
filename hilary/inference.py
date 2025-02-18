@@ -1,11 +1,9 @@
 """Infer clonal families."""
 
 from __future__ import annotations
-
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING
-
 import numpy as np
 import pandas as pd
 import structlog
@@ -14,7 +12,6 @@ from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
-
 from hilary.utils import applyParallel, pRequired, return_cdf, group_mutations
 
 if TYPE_CHECKING:
@@ -45,7 +42,11 @@ class CDR3Clustering:
         Runs self.cluster in parallel on dataframe grouped by 'group' argument.
     """
 
-    def __init__(self, thresholds: pd.DataFrame, threads: int = 1) -> None:
+    def __init__(
+        self,
+        thresholds: pd.DataFrame,
+        threads: int = 1
+        ) -> None:
         """Initialize thresholds.
 
         Args:
@@ -55,7 +56,10 @@ class CDR3Clustering:
         self.thresholds = thresholds
         self.threads = threads
 
-    def cluster(self, args: tuple[tuple[str, str, int], pd.DataFrame]) -> pd.Series:
+    def cluster(
+        self,
+        args: tuple[tuple[str, str, int], pd.DataFrame]
+        ) -> pd.Series:
         """Return cluster labels depending of thresholds in self.thresholds.
 
         Args:
@@ -208,7 +212,10 @@ class DistanceMatrix:
         y = (n0 - exp_n0) / std_n0
         return x - y
 
-    def proc(self, start: int) -> tuple[int, int, list[float]]:
+    def proc(
+        self, 
+        start: int
+        ) -> tuple[int, int, list[float]]:
         """Compute 1D distance matrix between start and start+self.k_step.
 
         Args:
@@ -285,7 +292,7 @@ class HILARy:
 
         Args:
             apriori (Apriori): Apriori object containing histograms and thresholds.
-            xy_threshold (int):Threshold to use for the xy method.
+            xy_threshold (int): Threshold to use for the xy method.
         """
         self.group = ["v_gene", "j_gene", "cdr3_length"]
         self.classes = apriori.classes
