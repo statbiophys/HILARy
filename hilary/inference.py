@@ -389,7 +389,6 @@ class HILARy:
         -------
             None
         """
-
         alignment_length = len(df["alt_sequence_alignment"].values[0])
         # we should parallelize this for loop, it is currently a bottleneck on my side
         log.debug(
@@ -404,7 +403,7 @@ class HILARy:
             cpuCount=self.threads,
             silent=self.silent,
         )
-        
+
         log.debug(
             "Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.",
         )

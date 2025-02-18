@@ -297,7 +297,7 @@ class Apriori:
 
         prevalence = best_rho
         bins = np.arange(l + 1)
-        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum()
+        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum() ## best_mu is not yet divided by cdr3_length
         p = best_cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
         t_prec = (
@@ -347,15 +347,16 @@ class Apriori:
         self.classes["null_model"] = parameters["null_model"]
 
         self.classes["error"] = parameters["error"]
-        self.classes["mean_distance"] = parameters["mu"] / self.classes["cdr3_length"]
-        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2)
-        self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
-            0.04,
-        )
+        self.classes["mean_distance"] = parameters["mu"] / self.classes["cdr3_length"] # here we divide by cdr3_length
+        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2) #0.2 is the right default?
+        self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(0.04,) #0.04 is the right default?
         self.classes["precise_threshold"] = parameters["t_prec"]
         self.classes["sensitive_threshold"] = parameters["t_sens"]
+        
+        ## // 5 --> 20% of the cdr3
+        ## // 10 --> 10% of the cdr3
         self.classes["precise_threshold"] = (
-            self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
+            self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 10).astype(int)
         )
         self.classes["sensitive_threshold"] = (
             self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
