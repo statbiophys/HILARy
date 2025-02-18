@@ -353,13 +353,13 @@ class Apriori:
         self.classes["precise_threshold"] = parameters["t_prec"]
         self.classes["sensitive_threshold"] = parameters["t_sens"]
         
-        ## // 5 --> 20% of the cdr3
+        ## // 20 --> 5% of the cdr3
         ## // 10 --> 10% of the cdr3
         self.classes["precise_threshold"] = (
-            self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 10).astype(int)
+            self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 20).astype(int)
         )
         self.classes["sensitive_threshold"] = (
-            self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 5).astype(int)
+            self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 10).astype(int)
         )
 
     def return_fit(self, class_id: int):
