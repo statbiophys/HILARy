@@ -293,10 +293,12 @@ class Apriori:
         bins = np.arange(cdr3_length + 1)
         ## This best_mu is not yet divided by cdr3_length
         cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum() 
+        #####
         p = best_cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
         t_prec = (p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision).sum() - 1
         t_prec = np.min([t_prec, t_sens], axis=0)
+
 
         pdf0,pdf1 = cdf_to_pmf(cdf0),cdf_to_pmf(cdf1)
         # check if this +1 is correct
@@ -387,8 +389,8 @@ class Apriori:
         -------
         tuple: A tuple containing the following elements:
             - bins (numpy.ndarray): The bin edges for the histogram.
-            - cdf0 (numpy.ndarray): The cumulative distribution function (CDF) for the negative distribution.
-            - cdf1 (numpy.ndarray): The Poisson CDF for the positive distribution.
+            - pdf0 (numpy.ndarray): The negative distribution.
+            - pdf1 (numpy.ndarray): The Poisson positive distribution.
             - prevalence (float): The prevalence of the class.
             - fitted_distribution (numpy.ndarray): The fitted distribution for the class.
             - hist_data_normalized (numpy.ndarray): The normalized histogram data for the class.
@@ -428,12 +430,12 @@ class Apriori:
             1 - prevalence
         ) * cdf_to_pmf(cdf0)
         return (
-            self.null_model,
-            mode,
             bins,
             cdf_to_pmf(cdf0),
             cdf_to_pmf(cdf1),
             prevalence,
             fitted_distribution,
             hist_data / sum(hist_data),
+            mode,
+
         )

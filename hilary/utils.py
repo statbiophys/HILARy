@@ -274,8 +274,7 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
                 dataframe[column_dict[key]] = dataframe[key]
     return dataframe
 
-
-def pairwise_evaluation(df: pd.DataFrame, partition: str):
+def pairwise_evaluation(df: pd.DataFrame, partition: str,truth: str = 'ground_truth') -> tuple[float,float]:
     """Evaluate performance if ground truth present in dataframe.
 
     Args:
@@ -286,23 +285,26 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str):
     -------
         (precision,sensitivity)
     """
-    if "ground_truth" not in df.columns:
-        log.debug("ground_truth not a column value.")
-        return None, None
     TP = 0
-    P = binom(df.groupby(["ground_truth"]).size(), 2).sum()
+    P = binom(df.groupby([truth]).size(), 2).sum()
     TP_FP = binom(df.groupby([partition]).size(), 2).sum()
-    for _, family in tqdm(df.groupby(["ground_truth"]), disable=True):
+    N = binom(len(df), 2).sum() - P
+    N_ = N + P - TP_FP
+    for _, family in tqdm(df.groupby([truth]), disable=True):
         for r1, r2 in combinations(family[partition], 2):
             if r1 == r2:
                 TP += 1
+    FP = TP_FP - TP
 
+    if (not TP_FP and P > 0) or not P:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
 
-    if P==0:
-        return 1,len(df[partition].unique())/len(df["ground_truth"].unique())
-    if  P > 0 and TP_FP==0:
-        return len(df["ground_truth"].unique())/len(df[partition].unique()), 1
-    return TP / TP_FP, TP / P  # precision, sensitivity
+    fallout= FP / N 
+    precision = TP / TP_FP
+    sensitivity = TP / P
+    true_prevalence = P / (P + N)
+    estimated_prevalence =  TP_FP / (TP_FP + N_)
+    return precision, sensitivity#,fallout,true_prevalence,estimated_prevalence
 
 
 def pRequired(rho, pi=0.99):
