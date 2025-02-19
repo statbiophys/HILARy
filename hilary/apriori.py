@@ -216,37 +216,31 @@ class Apriori:
         if not isinstance(class_id, int):
             class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
-        l = classes_temp.cdr3_length.values[0]
-        l = np.clip(l, np.min(self.lengths), np.max(self.lengths))
+        cdr3_length = classes_temp.cdr3_length.values[0]
+        # clip to the range of lengths. Do we have a better plan here?
+        cdr3_length = np.clip(cdr3_length, np.min(self.lengths), np.max(self.lengths))
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
-        histo = h.values[0, 1:].astype(int)[: l + 1]
+        histo = h.values[0, 1:].astype(int)[: cdr3_length + 1]
         cdf_list = []
         names = []
+        cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length)
+        cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
+        cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
         if self.infer_cdf:
-            if self.null_model == "vjl":  # probably a better way to code that
-                cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
-                cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
-                cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
+            if self.null_model == "vjl":
                 cdf_list.extend([cdf_df_vjl, cdf_df_jl, cdf_df_l])
                 names.extend(["VJL", "JL", "L"])
             elif self.null_model == "jl":
-                cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
-                cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
                 cdf_list.extend([cdf_df_jl, cdf_df_l])
                 names.extend(["JL", "L"])
             elif self.null_model == "l":
-                cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
                 cdf_list.extend([cdf_df_l])
                 names.extend(["L"])
             else:
                 msg = f"Unknown CDF null model : {self.null_model}"
                 raise ValueError(msg)
         else:
-            cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
-            cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
-            cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
-
             if self.null_model == "vjl" and (
                 not cdf_df_vjl.empty
             ):  # probably a better way to code that
@@ -263,18 +257,18 @@ class Apriori:
                 raise ValueError(msg)
 
         min_error = np.inf
-        best_cdf0 = cdf_list[-1].values[0, 3 : 3 + l + 1]
+        best_cdf0 = cdf_list[-1].values[0, 3 : 3 + cdr3_length + 1]
         best_rho = 0
         best_mu = 0
         null_model = "None"
         for i, cdf in enumerate(cdf_list):
             if cdf.empty:  # did not find null model for vjl or jl
                 continue
-            cdf0 = cdf.values[0, 3 : 3 + l + 1]
+            cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
             if self.recenter_mean:  # change with truncated mean
                 histo_pmf = histo / histo.sum()
                 pmf0 = cdf_to_pmf(cdf0)
-                shift = int(np.round(np.mean(histo_pmf[l // 5 :]) - np.mean(pmf0[l // 5 :])))
+                shift = int(np.round(np.mean(histo_pmf[cdr3_length // 5 :]) - np.mean(pmf0[cdr3_length // 5 :])))
                 new_pmf0 = np.empty_like(pmf0)
                 if shift > 0:
                     new_pmf0[:shift] = 0
@@ -285,25 +279,31 @@ class Apriori:
                 if shift != 0:
                     cdf0 = np.cumsum(new_pmf0)
 
-            em = EM(cdf=cdf0, l=l, h=histo, positives="poisson")
+            em = EM(cdf=cdf0, h=histo, positives="poisson")
             rho_poisson, mu_poisson = em.discreteEM()
             error = em.error([rho_poisson, mu_poisson])
             if error <= min_error:
-                best_cdf0 = cdf.values[0, 3 : 3 + l + 1]
+                best_cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
                 min_error = error
                 best_rho = rho_poisson
                 best_mu = mu_poisson
                 null_model = names[i]  # what null model is actually being used
 
         prevalence = best_rho
-        bins = np.arange(l + 1)
-        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum() ## best_mu is not yet divided by cdr3_length
+        bins = np.arange(cdr3_length + 1)
+        ## This best_mu is not yet divided by cdr3_length
+        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum() 
         p = best_cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
-        t_prec = (
-            p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision
-        ).sum() - 1
+        t_prec = (p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision).sum() - 1
         t_prec = np.min([t_prec, t_sens], axis=0)
+
+        pdf0,pdf1 = cdf_to_pmf(cdf0),cdf_to_pmf(cdf1)
+        # check if this +1 is correct
+        TPp,TPs=(prevalence*pdf1[:t_prec+1]).sum(),(prevalence*pdf1[:t_sens+1]).sum()
+        FPp,FPs=((1-prevalence)*pdf0[:t_prec+1]).sum(),(1-prevalence)*pdf0[:t_sens+1].sum()
+        FNp,FNs=(prevalence*pdf1[t_prec+1:]).sum(),(prevalence*pdf1[t_sens+1:]).sum()
+        #TNp,TNs=((1-prevalence)*pdf0[t_prec+1:]).sum(),(1-prevalence)*pdf0[t_sens+1:].sum()
 
         result = pd.DataFrame(
             columns=[
@@ -314,6 +314,10 @@ class Apriori:
                 "t_prec",
                 "t_sens",
                 "null_model",
+                "est_precision_tprec",
+                "est_sensitivity_tprec",
+                "est_precision_tsens",
+                "est_sensitivity_tsens",
             ],
         )
         result.class_id = [class_id]
@@ -323,6 +327,10 @@ class Apriori:
         result.prevalence = [prevalence]
         result.mu = [best_mu]
         result.error = [min_error]
+        result.est_precision_tprec = [TPp/(TPp+FPp+1e-6)]
+        result.est_sensitivity_tprec = [TPp/(TPp+FNp+1e-6)]
+        result.est_precision_tsens = [TPs/(TPs+FPs+1e-6)]
+        result.est_sensitivity_tsens = [TPs/(TPs+FNs+1e-6)]
         return result
 
     def get_parameters(self) -> None:
@@ -352,7 +360,12 @@ class Apriori:
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(0.04,) #0.04 is the right default?
         self.classes["precise_threshold"] = parameters["t_prec"]
         self.classes["sensitive_threshold"] = parameters["t_sens"]
-        
+
+        self.classes["est_precision_tprec"] = parameters["est_precision_tprec"]
+        self.classes["est_sensitivity_tprec"] = parameters["est_sensitivity_tprec"]
+        self.classes["est_precision_tsens"] = parameters["est_precision_tsens"]
+        self.classes["est_sensitivity_tsens"] = parameters["est_sensitivity_tsens"]
+
         ## // 20 --> 5% of the cdr3
         ## // 10 --> 10% of the cdr3
         self.classes["precise_threshold"] = (
@@ -383,7 +396,7 @@ class Apriori:
         v = self.classes.loc[self.classes.class_id == class_id]
         v_gene = v.v_gene.values[0]
         j_gene = v.j_gene.values[0]
-        null_model = v.null_model.values[0]
+        mode = v.null_model.values[0]
         cdr3_length = v.cdr3_length.values[0]
         bins = np.arange(cdr3_length + 1)
         hist_data = self.histograms.loc[self.histograms.class_id == class_id].values[
@@ -398,18 +411,14 @@ class Apriori:
         cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
         cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
 
-        mode = ""
-        if self.null_model == "vjl" and not cdf_df_vjl.empty:
+        if mode == "VJL":
             cdf_df = cdf_df_vjl
-            mode = "VJL"
-        elif self.null_model in ["jl","vjl"] and not cdf_df_jl.empty:
+        elif mode == "JL":
             cdf_df = cdf_df_jl
-            mode = "JL"
-        elif self.null_model ["jl","vjl","l"]  and not cdf_df_l.empty:
-            mode = "L"
+        elif mode == "L":
             cdf_df = cdf_df_l
         else:
-            msg = f"CDR3 length {cdr3_length} not available in CDFs."
+            msg = f"Unknown null model: {mode}"
             raise ValueError(msg)
 
         cdf0 = cdf_df.values[0, 3 : 3 + cdr3_length + 1]

@@ -14,7 +14,6 @@ class EM:
     def __init__(
         self,
         cdf: np.array,
-        l: float,
         h: np.ndarray,
         howmany: int = 10,
         positives: str = "poisson",
