@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger()
 
-
 class CDR3Clustering:
     """
     A class to infer families using CDR3 length and thresholds computed by the Apriori class.
