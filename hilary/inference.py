@@ -343,10 +343,10 @@ class HILARy:
         size = int(1e6)
         (_, _, _, prevalence, mutations, alignment_length, class_id,null_model)= args
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
-        l = classes_temp.cdr3_length.values[0]
+        cdr3_length = classes_temp.cdr3_length.values[0]
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
-        if l not in self.lengths or (len(mutations) < 100):
+        if cdr3_length not in self.lengths or (len(mutations) < 100):
             return (0, class_id)
         bins = np.arange(np.max(mutations) + 1)
         pni, nis = np.histogram(mutations, bins=bins)
@@ -360,17 +360,17 @@ class HILARy:
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
         if null_model == 'VJL':
-            cdf_df = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=l)
+            cdf_df = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length)
         elif null_model == 'JL':
-            cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=l)
+            cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
         else:
-            cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=l)
-        cdf_np=cdf_df.values[0,3:3+l]
+            cdf_df = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
+        cdf_np=cdf_df.values[0,3:3+cdr3_length]
         pn = np.diff(cdf_np, prepend=[0], append=[1]).astype(float)
-        ns = np.random.choice(np.arange(l + 1), size=size, replace=True, p=pn / pn.sum())
+        ns = np.random.choice(np.arange(cdr3_length + 1), size=size, replace=True, p=pn / pn.sum())
         nLs = np.maximum(n1s + n2s - 2 * n0s, 0)
-        exp_n = (l / alignment_length) * (nLs + 1)
-        std_n = np.sqrt(exp_n * (l + alignment_length) / alignment_length)
+        exp_n = (cdr3_length / alignment_length) * (nLs + 1)
+        std_n = np.sqrt(exp_n * (cdr3_length + alignment_length) / alignment_length)
         xs = (ns - exp_n) / std_n
         zs = xs - ys
         return (
@@ -595,6 +595,9 @@ class HILARy:
         small_to_do = sizes[~mask].index
         return df, small_to_do, large_to_do
 
+    def chunked_class2pairs(self,x):
+        return pd.concat([self.class2pairs(g) for g in x])
+
     def infer(self, df) -> pd.DataFrame:
         """Infer family clusters.
 
@@ -616,24 +619,41 @@ class HILARy:
         if not sum(df["to_resolve"]):
             log.info("Returning cdr3 method precise clusters.")
             df["clone_id"] = df["precise_cluster"]
-            df = df.drop(
-                columns=[
-                    "cluster",
-                ],
-            )
+            df = df.drop(columns=[ "cluster"])
             return df
 
-        dfGrouped = df.groupby(self.group + ["sensitive_cluster"])
         log.debug("Inferring family clusters for small groups.")
+        small_to_do_df = pd.DataFrame(list(small_to_do), columns=small_to_do.names)
+        df['index']=df.index.values
+        small_df = small_to_do_df.merge(df)
+        small_df.index=small_df['index'].values
+        small_df=small_df.drop(columns=['index'])
+        grouped_list = list(small_df.groupby(self.group + ["sensitive_cluster"]))
+        num_chunks = self.threads * 10
+        chunk_size = np.ceil(len(small_to_do) / num_chunks).astype(int)
+        small_to_do_chunks = [grouped_list[i:i + chunk_size] for i in range(0, len(grouped_list), chunk_size)]
+        #num_chunks = self.threads * 10
+        #chunk_size = np.ceil(len(small_to_do) / num_chunks).astype(int)
+        # is there a faster way to do this?
+        #log.debug(f"Create chunks for {len(small_to_do)} small groups.")
+        #small_to_do_chunks = [[(g, dfGrouped.get_group(g)) for g in small_to_do[i:i + chunk_size]] for i in tqdm(range(0, len(small_to_do), chunk_size))]
+
         df["family_cluster"] = applyParallel(
-            [(g, dfGrouped.get_group(g)) for g in small_to_do],
-            self.class2pairs,
+            small_to_do_chunks,
+            self.chunked_class2pairs,
             silent=self.silent,
             cpuCount=self.threads,
-        )
+)
         log.debug("Inferring family clusters for large groups.")
+        large_to_do_df = pd.DataFrame(list(large_to_do), columns=large_to_do.names)
+        df['index']=df.index.values
+        large_df = large_to_do_df.merge(df)
+        large_df.index=large_df['index'].values
+        large_df=large_df.drop(columns=['index'])
+        grouped_list = list(large_df.groupby(['v_gene', 'j_gene', 'cdr3_length','sensitive_cluster']))
+
         large_dict = {}
-        for g in tqdm(large_to_do):
+        for g,grouped_df in tqdm(grouped_list):
             v_gene, j_gene, l, sensitive_cluster = g
             xy_threshold = self.classes.query(
                 "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
@@ -641,7 +661,7 @@ class HILARy:
             dm = DistanceMatrix(
                 l=l,
                 alignment_length=self.alignment_length,
-                df=dfGrouped.get_group(g)[
+                df=grouped_df[
                     [
                         "cdr3",
                         "alt_sequence_alignment",
@@ -653,7 +673,7 @@ class HILARy:
             )
             d = dm.compute()
             dct = self.singleLinkage(
-                indices=dfGrouped.get_group(g).index,
+                indices=grouped_df.index,
                 dist=d,
                 threshold=self.alignment_length + xy_threshold,
             )

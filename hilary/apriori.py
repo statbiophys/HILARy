@@ -241,15 +241,13 @@ class Apriori:
                 msg = f"Unknown CDF null model : {self.null_model}"
                 raise ValueError(msg)
         else:
-            if self.null_model == "vjl" and (
-                not cdf_df_vjl.empty
-            ):  # probably a better way to code that
+            if (self.null_model in ["vjl"]) and (not cdf_df_vjl.empty):  # probably a better way to code that
                 cdf_list.extend([cdf_df_vjl])
                 names.extend(["VJL"])
             elif (self.null_model in ["vjl", "jl"]) and (not cdf_df_jl.empty):
                 cdf_list.extend([cdf_df_jl])
                 names.extend(["JL"])
-            elif self.null_model in ["vjl", "jl", "l"] and (not cdf_df_l.empty):
+            elif (self.null_model in ["vjl", "jl", "l"]) and (not cdf_df_l.empty):
                 cdf_list.extend([cdf_df_l])
                 names.extend(["L"])
             else:
@@ -299,9 +297,8 @@ class Apriori:
         t_prec = (p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision).sum() - 1
         t_prec = np.min([t_prec, t_sens], axis=0)
 
-
-        pdf0,pdf1 = cdf_to_pmf(cdf0),cdf_to_pmf(cdf1)
         # check if this +1 is correct
+        pdf0,pdf1 = cdf_to_pmf(cdf0),cdf_to_pmf(cdf1)
         TPp,TPs=(prevalence*pdf1[:t_prec+1]).sum(),(prevalence*pdf1[:t_sens+1]).sum()
         FPp,FPs=((1-prevalence)*pdf0[:t_prec+1]).sum(),(1-prevalence)*pdf0[:t_sens+1].sum()
         FNp,FNs=(prevalence*pdf1[t_prec+1:]).sum(),(prevalence*pdf1[t_sens+1:]).sum()
