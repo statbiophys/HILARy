@@ -20,6 +20,8 @@ thresholds_dict={
     "naive_human":{"precision":0.995},
     "naive_mouse":{"precision":0.995}}
 
+hilary_pars={'precision':1,'sensitivity':0.995,'null_model':'vjl'}
+
 def check_performance_on_nat_data():
     for length in [15, 24, 39]:
         log.info(
@@ -42,7 +44,7 @@ def check_performance_on_nat_data():
         )
         dataframe["sequence_id"] = dataframe.index.astype("str")
         apriori = Apriori(
-            silent=False, threads=-1, precision=1, sensitivity=0.95, null_model="l"
+            silent=False, threads=-1, precision=hilary_pars['precision'], sensitivity=hilary_pars['sensitivity'], null_model=hilary_pars['null_model']
         )  # show progress bars, use all threads
         dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
         apriori.classes = create_classes(dataframe_processed)
@@ -51,9 +53,7 @@ def check_performance_on_nat_data():
         hilary = HILARy(apriori, df=dataframe_processed)
         dataframe_cdr3 = hilary.compute_prec_sens_clusters(df=dataframe_processed)
         dataframe["cdr3_based_family"] = dataframe_cdr3["precise_cluster"]
-        precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
-            df=dataframe, partition="cdr3_based_family"
-        )
+        precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(df=dataframe, partition="cdr3_based_family")
 
         assert precision_cdr3 > thresholds_dict[f"nat_{length}"]["precision_cdr"]
         hilary.get_xy_thresholds(df=dataframe_cdr3)
@@ -90,7 +90,7 @@ def check_performance_on_partis_data():
         )
         dataframe["sequence_id"] = dataframe.index.astype("str")
         apriori = Apriori(
-            silent=False, threads=-1, sensitivity=1, precision=1, null_model="l"
+            silent=False, threads=-1, precision=hilary_pars['precision'], sensitivity=hilary_pars['sensitivity'], null_model=hilary_pars['null_model']
         )  # show progress bars, use all threads
         dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
         apriori.classes = create_classes(dataframe_processed)
@@ -128,7 +128,7 @@ def check_performance_on_naive_mouse_data():
     )
     dataframe["sequence_id"] = dataframe.index.astype("str")
     apriori = Apriori(
-        silent=False, threads=-1, precision=1, sensitivity=0.95, species="mouse", null_model="l"
+        silent=False, threads=-1, precision=hilary_pars['precision'], sensitivity=hilary_pars['sensitivity'], null_model=hilary_pars['null_model'],species="mouse"
     )  # show progress bars, use all threads
     dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
     apriori.classes = create_classes(dataframe_processed)
@@ -160,7 +160,7 @@ def check_performance_on_naive_human_data():
     )
     dataframe["sequence_id"] = dataframe.index.astype("str")
     apriori = Apriori(
-        silent=False, threads=-1, precision=1, sensitivity=0.95, null_model="l"
+        silent=False, threads=-1,precision=hilary_pars['precision'], sensitivity=hilary_pars['sensitivity'], null_model=hilary_pars['null_model']
     )  # show progress bars, use all threads
     dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
     apriori.classes = create_classes(dataframe_processed)

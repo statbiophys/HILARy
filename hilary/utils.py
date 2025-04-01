@@ -288,28 +288,67 @@ def pairwise_evaluation(df: pd.DataFrame, partition: str,truth: str = 'ground_tr
     TP = 0
     P = binom(df.groupby([truth]).size(), 2).sum()
     TP_FP = binom(df.groupby([partition]).size(), 2).sum()
-    N = binom(len(df), 2).sum() - P
-    N_ = N + P - TP_FP
     for _, family in tqdm(df.groupby([truth]), disable=True):
         for r1, r2 in combinations(family[partition], 2):
             if r1 == r2:
                 TP += 1
-    FP = TP_FP - TP
 
     if (not TP_FP and P > 0) or not P:
-        return np.nan, np.nan, np.nan, np.nan, np.nan
+        return np.nan, np.nan
 
-    fallout= FP / N 
     precision = TP / TP_FP
     sensitivity = TP / P
-    true_prevalence = P / (P + N)
-    estimated_prevalence =  TP_FP / (TP_FP + N_)
-    return precision, sensitivity#,fallout,true_prevalence,estimated_prevalence
+    
+    # compute other metrics
+    #FP = TP_FP - TP
+    #N = binom(len(df), 2).sum() - P
+    #N_ = N + P - TP_FP
+    #fallout= FP / N 
+    #true_prevalence = P / (P + N)
+    #estimated_prevalence =  TP_FP / (TP_FP + N_)
+    return precision, sensitivity
 
+def CF_evaluation(dataframe: pd.DataFrame, partition: str,truth: str = 'ground_truth', min_size=10) -> tuple[float,float]:
+    """
+    Evaluate the clonal families based on the ground truth
+    Args:
+        df: DataFrame
+        partition: str
+        truth: str
+    Returns:
+        evaluation_df: DataFrame
+    """
+
+    out=pd.DataFrame()
+    # compute clone_id size needed to comput insertions and deletions
+    # and filter out families with size < min_size
+    df=dataframe.copy()
+    fam_size=df[partition].value_counts().reset_index().rename(columns={'count': partition+'_size'})
+    df=df.merge(fam_size, on=partition)
+    df=df.loc[df[partition+'_size']>=min_size]
+    for clone_id, df1 in tqdm(df.groupby([partition]), disable=False):
+        clone_size=len(df1)
+        # pick the most common family as ground truth
+        family, counts = df1.family.value_counts().reset_index().values[0]
+        # inspect the ground truth size
+        ground_truth=len(df.loc[df[truth]==family])
+        # number of edits needed to turn the clonal family into the ground truth (insertions) + (deletions)
+        insertions = ground_truth - counts
+        deletions = clone_size - counts
+        edit_distance = insertions + deletions
+        out=pd.concat([out,pd.DataFrame({
+                  'clone_id':clone_id,
+                  'ground_truth':family,
+                  'insertions':insertions,
+                  'deletions':deletions,
+                  'edit_distance':edit_distance,
+                  'clone_id_size':clone_size,
+                  'ground_truth_coverage':counts,
+                  'ground_truth_size':ground_truth},index=[0])])
+    return out.reset_index(drop=True)
 
 def pRequired(rho, pi=0.99):
     return rho / (1 + 1e-5 - rho) * (1 - pi) / pi
-
 
 def get_logger(verbose, use_json):
     if verbose >= 2:

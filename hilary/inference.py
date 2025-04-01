@@ -13,7 +13,6 @@ from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
 from hilary.utils import applyParallel, pRequired, return_cdf, group_mutations
-
 if TYPE_CHECKING:
     from hilary.apriori import Apriori
 
@@ -560,7 +559,7 @@ class HILARy:
     def to_do(
         self,
         df,
-        size_threshold: int = 500,
+        size_threshold: int = 1000,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Classify sensitive clusters not reaching desired sensitivity into big or small cluster.
 
@@ -598,7 +597,7 @@ class HILARy:
     def chunked_class2pairs(self,x):
         return pd.concat([self.class2pairs(g) for g in x])
 
-    def infer(self, df) -> pd.DataFrame:
+    def infer(self, df:pd.DataFrame, size_threshold: int = 1000) -> pd.DataFrame:
         """Infer family clusters.
 
         First, for each sensitive cluster that does not reach desired sensitivity, group precise
@@ -613,7 +612,7 @@ class HILARy:
         -------
             df(pd.DataFrame): Dataframe with inferred clonal families in 'clone_id'.
         """
-        df, small_to_do, large_to_do = self.to_do(df)
+        df, small_to_do, large_to_do = self.to_do(df, size_threshold = size_threshold)
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
         log.debug("Checking alignment length.", alignment_length=self.alignment_length)
         if not sum(df["to_resolve"]):
@@ -632,18 +631,13 @@ class HILARy:
         num_chunks = self.threads * 10
         chunk_size = np.ceil(len(small_to_do) / num_chunks).astype(int)
         small_to_do_chunks = [grouped_list[i:i + chunk_size] for i in range(0, len(grouped_list), chunk_size)]
-        #num_chunks = self.threads * 10
-        #chunk_size = np.ceil(len(small_to_do) / num_chunks).astype(int)
-        # is there a faster way to do this?
-        #log.debug(f"Create chunks for {len(small_to_do)} small groups.")
-        #small_to_do_chunks = [[(g, dfGrouped.get_group(g)) for g in small_to_do[i:i + chunk_size]] for i in tqdm(range(0, len(small_to_do), chunk_size))]
 
         df["family_cluster"] = applyParallel(
             small_to_do_chunks,
             self.chunked_class2pairs,
             silent=self.silent,
-            cpuCount=self.threads,
-)
+            cpuCount=self.threads)
+        # for big family clusters we run each family independently and compute the distance matrix in parallel
         log.debug("Inferring family clusters for large groups.")
         large_to_do_df = pd.DataFrame(list(large_to_do), columns=large_to_do.names)
         df['index']=df.index.values
@@ -661,14 +655,7 @@ class HILARy:
             dm = DistanceMatrix(
                 l=l,
                 alignment_length=self.alignment_length,
-                df=grouped_df[
-                    [
-                        "cdr3",
-                        "alt_sequence_alignment",
-                        "mutation_count",
-                        "precise_cluster",
-                    ]
-                ],
+                df=grouped_df[["cdr3","alt_sequence_alignment","mutation_count","precise_cluster"]],
                 threads=self.threads,
             )
             d = dm.compute()
