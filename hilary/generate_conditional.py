@@ -1,26 +1,23 @@
-import numpy as np
-import righor as rg
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
-import polars as pl
-from tqdm import tqdm
+
+import numpy as np
 import pandas as pd
+import polars as pl
+import righor as rg
+from tqdm import tqdm
+
 
 def pl_container_func_rg(seqs: Sequence[Sequence[str]]) -> pl.DataFrame:
     df = pl.DataFrame(
         seqs, orient="row", schema=["junction_aa", "v_gene", "j_gene", "junction"]
-    ).with_columns(
-        pl.col("v_gene").str.split("*").list[0], pl.col("j_gene").str.split("*").list[0]
-    )
+    ).with_columns(pl.col("v_gene").str.split("*").list[0], pl.col("j_gene").str.split("*").list[0])
     return df
-    
+
+
 def generate_pgen_seqs_righor(
     model: str,
     num_monte_carlo: int,
-    seed: int
-    | np.random.Generator
-    | np.random.BitGenerator
-    | np.random.SeedSequence
-    | None = None,
+    seed: int | np.random.Generator | np.random.BitGenerator | np.random.SeedSequence | None = None,
     available_v: Iterable | None = None,
     available_j: Iterable | None = None,
     container_func: Callable[Sequence[Sequence[str]], Any] | None = None,
@@ -70,23 +67,23 @@ def generate_pgen_seqs_righor(
 
     if available_v is not None:
         available_v = set(available_v)
-        available_v = [
-            v for v in model.v_segments if v.name.partition("*")[0] in available_v
-        ]
+        available_v = [v for v in model.v_segments if v.name.partition("*")[0] in available_v]
     if available_j is not None:
         available_j = set(available_j)
-        available_j = [
-            j for j in model.j_segments if j.name.partition("*")[0] in available_j
-        ]
+        available_j = [j for j in model.j_segments if j.name.partition("*")[0] in available_j]
 
     if seed is not None and not isinstance(seed, int):
         seed = np.random.default_rng(seed).integers(2**32 - 1)
 
     generator = model.generator(seed, available_v, available_j)
     if without_error:
-        #gen_seqs = generator.generate_many_without_errors(num_monte_carlo, functional)
-        gen_seqs = [generator.generate_without_errors(functional) for _ in tqdm(range(num_monte_carlo))]
-        gen_seqs = np.array([[s.cdr3_aa,s.v_gene,s.j_gene, s.cdr3_nt] for s in gen_seqs],dtype=object)
+        # gen_seqs = generator.generate_many_without_errors(num_monte_carlo, functional)
+        gen_seqs = [
+            generator.generate_without_errors(functional) for _ in tqdm(range(num_monte_carlo))
+        ]
+        gen_seqs = np.array(
+            [[s.junction_aa, s.v_gene, s.j_gene, s.junction_nt] for s in gen_seqs], dtype=object
+        )
     else:
         gen_seqs = generator.generate(num_monte_carlo, functional)
 
@@ -108,15 +105,17 @@ def generate_pgen_seqs_righor(
 
     return gen_seqs.to_pandas()
 
+
 def generate_ppost_seqs(
-        sonia_model,
-        righor_model,
-        n_seqs: int = int(1e5),
-        upper_bound:int = 10,
-        available_v: Iterable | None = None,
-        available_j: Iterable | None = None) -> pd.DataFrame:
+    sonia_model,
+    righor_model,
+    n_seqs: int = int(1e5),
+    upper_bound: int = 10,
+    available_v: Iterable | None = None,
+    available_j: Iterable | None = None,
+) -> pd.DataFrame:
     """Generate post-selection sequences using SONIA and RIGHOR models.
-    
+
     Parameters:
     sonia_model: A trained SONIA model used to evaluate selection factors.
     righor_model: A trained RIGHOR model used to generate sequences.
@@ -124,15 +123,20 @@ def generate_ppost_seqs(
     upper_bound (int): Upper bound for selection factor normalization. Default is 10.
     available_v (list, optional): List of available V genes. Default is None.
     available_j (list, optional): List of available J genes. Default is None.
-    
+
     Returns:
     pd.DataFrame: A DataFrame containing the generated sequences after selection.
-    """   
-    seqs=generate_pgen_seqs_righor(righor_model,int(n_seqs*1.1*upper_bound),available_j=available_j,available_v=available_v)
-    seqs['cdr3']=seqs['junction'].apply(lambda x: x[3:-3])
-    seqs['cdr3_length']=seqs['cdr3'].apply(len)
-    Qs=sonia_model.evaluate_selection_factors(seqs[['junction_aa','v_gene','j_gene']].values)
+    """
+    seqs = generate_pgen_seqs_righor(
+        righor_model,
+        int(n_seqs * 1.1 * upper_bound),
+        available_j=available_j,
+        available_v=available_v,
+    )
+    seqs["cdr3"] = seqs["junction"].apply(lambda x: x[3:-3])
+    seqs["cdr3_length"] = seqs["cdr3"].apply(len)
+    Qs = sonia_model.evaluate_selection_factors(seqs[["junction_aa", "v_gene", "j_gene"]].values)
     random_samples = np.random.uniform(size=len(Qs))
-    selection=random_samples < Qs / upper_bound
-    seqs=seqs[selection].drop_duplicates()
+    selection = random_samples < Qs / upper_bound
+    seqs = seqs[selection].drop_duplicates()
     return seqs[:n_seqs].reset_index(drop=True)
