@@ -6,6 +6,7 @@ import pandas as pd
 pd.options.mode.chained_assignment = None
 from multiprocessing import cpu_count
 from typing import TYPE_CHECKING, Iterable
+
 import numpy as np
 import righor
 import sonnia.sonia
@@ -13,6 +14,7 @@ from numpy.random import zipf
 from sonnia.utils import gene_to_num_str
 from textdistance import hamming
 from tqdm import tqdm
+
 from hilary.generate_conditional import generate_ppost_seqs
 from hilary.utils import applyParallel
 from hilary.utils_simulate import mutate, mutate2, nt2aa
@@ -118,9 +120,10 @@ class Simulator:
         ns = np.clip(ns, 0, max_threshold)
         self.smallSizes = ns[ns <= self.threshold]
         self.nbLarge = nbOfFamilies - len(self.smallSizes)
-        self.rootsLarge, self.rootsSmall = self.generate_naive(
+        roots= self.generate_naive(
             nbOfFamilies, cdr3_selection, available_j=available_j, available_v=available_v
         )
+        self.rootsLarge, self.rootsSmall = roots[: self.nbLarge], roots[self.nbLarge :]
         self.familiesLarge = self.largeFamilies(self.rootsLarge)
         if self.nbLarge > 0:
             self.familiesLarge["family"] = self.familiesLarge["family"] + 1
@@ -168,7 +171,7 @@ class Simulator:
         df['sequence']=df['sequence'].apply(lambda x: x[:(len(x)//3)*3])
         ## hiding a bug here, they should be all productive
         df=df.loc[df.sequence.apply(lambda x: "*" not in nt2aa(x))].reset_index(drop=True)
-        return df[:n][: self.nbLarge], df[:n][self.nbLarge :]
+        return df[:n]
 
     def smallFamilies(self):
         """

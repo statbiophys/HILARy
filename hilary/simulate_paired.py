@@ -9,11 +9,12 @@ from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
 from numpy.random import zipf
-from hilary.simulate import Simulator
-from tqdm import tqdm
-from hilary.utils_simulate import mutate, mutate2,nt2aa
 from textdistance import hamming
+from tqdm import tqdm
+
+from hilary.simulate import Simulator
 from hilary.utils import applyParallel
+from hilary.utils_simulate import mutate, mutate2, nt2aa
 
 
 class SimulatorPaired:
@@ -141,12 +142,10 @@ class SimulatorPaired:
     def generate_naive(self, nbOfFamilies):
         """Sample generated sequences (naive)"""
 
-        self.rootsLarge_heavy, self.rootsSmall_heavy = self.heavy_simulator.generate_naive(
-            nbOfFamilies
-        )
-        self.rootsLarge_light, self.rootsSmall_light = self.light_simulator.generate_naive(
-            nbOfFamilies
-        )
+        roots=self.heavy_simulator.generate_naive(nbOfFamilies)
+        self.rootsLarge_heavy, self.rootsSmall_heavy = roots[: self.heavy_simulator.nbLarge], roots[self.heavy_simulator.nbLarge :]
+        roots=self.light_simulator.generate_naive(nbOfFamilies)
+        self.rootsLarge_light, self.rootsSmall_light = roots[: self.light_simulator.nbLarge], roots[self.light_simulator.nbLarge :]
 
     def largeFamilies(self):
         """
@@ -392,7 +391,7 @@ def produce_alt_alignments_paired(df: pd.DataFrame) -> pd.DataFrame:
     df["alt_germline_alignment_light"] = df[
         ["germline_light", "cdr3_start_light", "cdr3_end_light"]
     ].apply(lambda x: (x[0][: x[1]] + x[0][x[2] :]), axis=1)
-   
+
     df["mutation_count_light"] = df[["alt_sequence_alignment_light", "alt_germline_alignment_light"]].apply(
         lambda x: hamming(*x), axis=1
     )
