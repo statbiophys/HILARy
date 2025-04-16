@@ -75,6 +75,9 @@ def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd
     -------
         pd.DataFrame: _description_
     """
+    if cdr3_length % 3 != 0:
+        cdr3_length = round(cdr3_length / 3) * 3 # round to the nearest multiple of 3
+
     cdf_df = pd.read_parquet(
         cdf_path,
         filters=[
