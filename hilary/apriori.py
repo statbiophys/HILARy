@@ -31,12 +31,13 @@ class Apriori:
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        species: str = "human",
+        #species: str = "human",
         silent: bool = False,
         paired: bool = False,
         null_model: str = "vjl",
         recenter_mean: bool = False,
         infer_cdf: bool = False,
+        model=None
     ) -> None:
         """Initialize attributes to later run class methods.
 
@@ -63,32 +64,32 @@ class Apriori:
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.check_translation = False
-        self.species = species
+        #self.species = species
         self.null_model = null_model
         self.infer_cdf = infer_cdf
         self.recenter_mean = recenter_mean
+        self.model=model
         if not paired:
-            if species == "human":
+            if 'human' in self.model: # for the moment specify both
                 self.lengths = np.arange(15, 81 + 3, 3).astype(int)
-            elif species == "mouse":
+            elif 'mouse' in self.model:
                 self.lengths = np.arange(12, 66 + 3, 3).astype(int)
             else:
-                msg = f"Unknown species: {species}"
+                msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
             self.cdf_path = Path(os.path.dirname(__file__)) / Path(
-                f"cdfs/cdfs_{species}_vjl.parquet"
+                f"cdfs/{model}.parquet"
             )
         else:
             self.null_model = "l"
-            if species == "human":
+            if 'human' in self.model:
                 self.lengths = np.arange(57, 144 + 3, 3).astype(int)
-            elif species == "mouse":
+            elif 'mouse' in self.model:
                 msg = "Paired method for mouse not implemented yet."
                 raise ValueError(msg)
             else:
-                msg = f"Unknown species      : {species     }"
+                msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
-
             self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
 
         self.classes = pd.DataFrame()

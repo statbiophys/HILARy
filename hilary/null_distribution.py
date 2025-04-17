@@ -36,11 +36,11 @@ class NullDistribution:
         if ppost_model in default_models:
             model_directory = os.path.join(main_folder, "default_models", ppost_model)
             print('Loading default model from',model_directory)
-        else: 
+        else:
             model_directory = ppost_model
         self.righor_model=righor.load_model_from_files(None,os.path.join(model_directory,'model_params.txt'),
-                                                os.path.join(model_directory,'model_marginals.txt'), 
-                                                os.path.join(model_directory,'V_gene_CDR3_anchors.csv'), 
+                                                os.path.join(model_directory,'model_marginals.txt'),
+                                                os.path.join(model_directory,'V_gene_CDR3_anchors.csv'),
                                                 os.path.join(model_directory,'J_gene_CDR3_anchors.csv'))
         self.v_genes=np.unique([v.split('*')[0] for v in self.sonia_model.pgen_model.V_allele_names])
         self.j_genes=np.unique([v.split('*')[0] for v in self.sonia_model.pgen_model.J_allele_names])
@@ -101,11 +101,11 @@ class NullDistribution:
         self.all=pd.concat([self.null,jl,l])
         return self.all
 
-    def build_null_distribution(self, 
-                                n_seqs: int | None = None, 
+    def build_null_distribution(self,
+                                n_seqs: int | None = None,
                                 available_j: Iterable | None = None,
                                 available_v: Iterable | None = None,
-                                sel_counts: int = 300, 
+                                sel_counts: int = 300,
                                 upper_bound: int = 15,
                                 seed:int = 42) -> pd.DataFrame:
         """
