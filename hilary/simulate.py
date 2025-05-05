@@ -76,6 +76,7 @@ class Simulator:
         available_v: Iterable | None = None,
         subtype: str = "mixture",
         mut_directory: str | None = None,
+        roots = None
     ) -> pd.DataFrame:
         """This method generates clonal families based on the specified number of families and the Zipf distribution parameter.
         It separates the families into large and small based on a threshold, generates naive sequences for each family,
@@ -120,9 +121,10 @@ class Simulator:
         ns = np.clip(ns, 0, max_threshold)
         self.smallSizes = ns[ns <= self.threshold]
         self.nbLarge = nbOfFamilies - len(self.smallSizes)
-        roots= self.generate_naive(
-            nbOfFamilies, cdr3_selection, available_j=available_j, available_v=available_v
-        )
+        if roots is None:
+            roots= self.generate_naive(
+                nbOfFamilies, cdr3_selection, available_j=available_j, available_v=available_v
+            )
         self.rootsLarge, self.rootsSmall = roots[: self.nbLarge], roots[self.nbLarge :]
         self.familiesLarge = self.largeFamilies(self.rootsLarge)
         if self.nbLarge > 0:
