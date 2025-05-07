@@ -356,12 +356,14 @@ def CF_evaluation(
     df = df.loc[df[partition + "_size"] >= min_size]
     for clone_id, df1 in tqdm(df.groupby([partition]), disable=False):
         clone_size = len(df1)
-        # pick the most common family as ground truth
-        family, counts = df1.family.value_counts().reset_index().values[0]
-        # inspect the ground truth size
+        # pick the most common family as ground truth and count the number of occurrences
+        family, counts = df1[truth].value_counts().reset_index().values[0]
+        # inspect the real ground truth size
         ground_truth = len(df.loc[df[truth] == family])
         # number of edits needed to turn the clonal family into the ground truth (insertions) + (deletions)
+        # insertions are real size of ground truth - number of occurrences in the cf (counts)
         insertions = ground_truth - counts
+        # deletions are the size of the clone - number of occurrences of ground truth(counts)
         deletions = clone_size - counts
         edit_distance = insertions + deletions
         out = pd.concat(
