@@ -94,15 +94,15 @@ class Apriori:
 
         self.classes = pd.DataFrame()
 
-    def preprocess(self, df: pd.DataFrame, df_kappa: pd.DataFrame | None = None) -> pd.DataFrame:
+    def preprocess(self, df: pd.DataFrame, df_light: pd.DataFrame | None = None) -> pd.DataFrame:
         """Remove non productive sequences from dataframe.
 
-        If df_kappa is not null then group VH, JH, VK and JK genes together and concatenate heavy
+        If df_light is not null then group VH, JH, VK and JK genes together and concatenate heavy
         and light cdr3s.
 
         Args:
             df (pd.DataFrame): dataframe of heavy chain sequences.
-            df_kappa (pd.DataFrame): dataframe of light chain sequences.
+            df_light (pd.DataFrame): dataframe of light chain sequences.
 
         Returns
         -------
@@ -126,12 +126,12 @@ class Apriori:
             df.j_gene = df.j_gene.apply(lambda x: translation_dict[x])
             df.v_gene = df.v_gene.apply(lambda x: translation_dict[x])
         if self.paired:
-            df_kappa = preprocess(df_kappa, silent=self.silent)
+            df_light = preprocess(df_light, silent=self.silent)
             for column in df.columns:
                 if column == "sequence_id":
                     continue
                 df[column + "_h"] = df[column]
-                df[column + "_k"] = df_kappa[column]
+                df[column + "_k"] = df_light[column]
                 df[column] = df[column + "_h"] + df[column + "_k"]
         return df
 
@@ -252,7 +252,7 @@ class Apriori:
                 cdf_list.extend([cdf_df_l])
                 names.extend(["L"])
             else:
-                msg = f"Unknown CDF null model : {self.null_model}"
+                msg = f"Unknown CDF null model : {self.null_model} or CDF not found"
                 raise ValueError(msg)
 
         min_error = np.inf
@@ -291,7 +291,7 @@ class Apriori:
         prevalence = best_rho
         bins = np.arange(cdr3_length + 1)
         ## This best_mu is not yet divided by cdr3_length
-        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum() 
+        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum()
         #####
         p = best_cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()

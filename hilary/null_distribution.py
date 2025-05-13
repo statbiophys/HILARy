@@ -1,15 +1,19 @@
-import righor
 import os
+from typing import Iterable
+
+import numpy as np
+import pandas as pd
+import righor
+import sonnia
 from sonnia.sonia import Sonia
 from sonnia.sonnia import SoNNia
-import sonnia
-import pandas as pd
-from hilary.apriori import Apriori
-from hilary.utils import create_classes
-from hilary.generate_conditional import generate_pgen_seqs_righor
-from typing import Iterable
 from tqdm import tqdm
-import numpy as np
+
+from hilary.apriori import Apriori
+from hilary.generate_conditional import generate_pgen_seqs_righor
+from hilary.utils import create_classes
+
+
 class NullDistribution:
     """
     Class to generate null distributions of CDR3s distances.

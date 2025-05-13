@@ -24,10 +24,10 @@ def crude_method(
         help="Path of the excel file to infer lineages.",
         show_default=False,
     ),
-    kappa_file: Path = typer.Option(
+    light_file: Path = typer.Option(
         None,
-        "--kappa-file",
-        help="Path of the kappa chain file, hilary will automatically use its paired option.",
+        "--light-file",
+        help="Path of the light chain file, hilary will automatically use its paired option.",
     ),
     verbose: int = typer.Option(
         0,
@@ -101,14 +101,14 @@ def crude_method(
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
     paired = False
-    if kappa_file:
+    if light_file:
         log.info("USING PAIRED OPTION.")
-        dataframe_kappa = read_input(input_path=kappa_file, config=config)
-        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
-        dataframe_kappa.set_index("sequence_id")
+        dataframe_light = read_input(input_path=light_file, config=config)
+        dataframe_light["sequence_id"] = dataframe_light["sequence_id"].str.strip("-igk")
+        dataframe_light.set_index("sequence_id")
         paired = True
     else:
-        dataframe_kappa = None
+        dataframe_light = None
 
     if verbose >= 2:
         input_path = debug_folder / Path(f"input_{data_path.name}")
@@ -121,7 +121,7 @@ def crude_method(
         paired=paired,
         threads=threads,
     )
-    dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=dataframe_kappa)
+    dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
     apriori.classes = create_classes(dataframe_processed)
     hilary = HILARy(
         apriori,
@@ -140,14 +140,14 @@ def crude_method(
     output_path = result_folder / Path(f"inferred_crude_method_{data_path.name}")
     save_dataframe(dataframe=dataframe, save_path=output_path)
     if paired:
-        dataframe_kappa["clone_id"] = dataframe_crude["crude_method_family"]
-        dataframe_kappa["sequence_id"] = dataframe["sequence_id"] + "-igk"
-        output_path_kappa = result_folder / Path(f"inferred_crude_method_{kappa_file.name}")
+        dataframe_light["clone_id"] = dataframe_crude["crude_method_family"]
+        dataframe_light["sequence_id"] = dataframe["sequence_id"] + "-igk"
+        output_path_light = result_folder / Path(f"inferred_crude_method_{light_file.name}")
         log.info(
-            "💾 SAVING RESULTS FOR KAPPA FILE",
-            output_path=output_path_kappa.as_posix(),
+            "💾 SAVING RESULTS FOR LIGHT FILE",
+            output_path=output_path_light.as_posix(),
         )
-        save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
+        save_dataframe(dataframe=dataframe_light, save_path=output_path_light)
 
     if verbose >= 2 and "ground_truth" in dataframe.columns:
         precision, sensitivity = pairwise_evaluation(df=dataframe, partition="clone_id")
@@ -165,10 +165,10 @@ def cdr3_method(
         help="Path of the excel file to infer lineages.",
         show_default=False,
     ),
-    kappa_file: Path = typer.Option(
+    light_file: Path = typer.Option(
         None,
-        "--kappa-file",
-        help="Path of the kappa chain file, hilary will automatically use its paired option.",
+        "--light-file",
+        help="Path of the light chain file, hilary will automatically use its paired option.",
     ),
     verbose: int = typer.Option(
         0,
@@ -248,14 +248,14 @@ def cdr3_method(
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
     paired = False
-    if kappa_file:
+    if light_file:
         log.info("USING PAIRED OPTION.")
-        dataframe_kappa = read_input(input_path=kappa_file, config=config)
-        dataframe_kappa["sequence_id"] = dataframe_kappa["sequence_id"].str.strip("-igk")
-        dataframe_kappa.set_index("sequence_id")
+        dataframe_light = read_input(input_path=light_file, config=config)
+        dataframe_light["sequence_id"] = dataframe_light["sequence_id"].str.strip("-igk")
+        dataframe_light.set_index("sequence_id")
         paired = True
     else:
-        dataframe_kappa = None
+        dataframe_light = None
 
     apriori = Apriori(
         paired=paired,
@@ -264,7 +264,7 @@ def cdr3_method(
         sensitivity=sensitivity,
         silent=silent,
     )
-    dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=dataframe_kappa)
+    dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
     apriori.classes = create_classes(dataframe_processed)
 
     log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
@@ -310,16 +310,16 @@ def cdr3_method(
         output_path = result_folder / Path(f"inferred_cdr3_based_{data_path.name}")
         save_dataframe(dataframe=dataframe, save_path=output_path)
         if paired:
-            dataframe_kappa["clone_id"] = dataframe_cdr3["precise_cluster"]
-            dataframe_kappa["sequence_id"] = dataframe["sequence_id"] + "-igk"
-            output_path_kappa = result_folder / Path(f"inferred_cdr3_based_{kappa_file.name}")
+            dataframe_light["clone_id"] = dataframe_cdr3["precise_cluster"]
+            dataframe_light["sequence_id"] = dataframe["sequence_id"] + "-igk"
+            output_path_light = result_folder / Path(f"inferred_cdr3_based_{light_file.name}")
             log.info(
-                "💾 SAVING RESULTS FOR KAPPA FILE",
-                output_path=output_path_kappa.as_posix(),
+                "💾 SAVING RESULTS FOR LIGHT FILE",
+                output_path=output_path_light.as_posix(),
             )
-            save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
+            save_dataframe(dataframe=dataframe_light, save_path=output_path_light)
 
-    return dataframe_cdr3, dataframe, dataframe_kappa, hilary
+    return dataframe_cdr3, dataframe, dataframe_light, hilary
 
 
 @app.command()
@@ -329,10 +329,10 @@ def full_method(
         help="Path of the excel file to infer lineages.",
         show_default=False,
     ),
-    kappa_file: Path = typer.Option(
+    light_file: Path = typer.Option(
         None,
-        "--kappa-file",
-        help="Path of the kappa chain file, hilary will automatically use its paired option.",
+        "--light-file",
+        help="Path of the light chain file, hilary will automatically use its paired option.",
     ),
     verbose: int = typer.Option(
         0,
@@ -396,15 +396,15 @@ def full_method(
         result_folder = data_path.parents[0] / Path("hilary_results/")
     result_folder.mkdir(parents=True, exist_ok=True)
     debug_folder = result_folder / Path("debug/")
-    if kappa_file:
+    if light_file:
         xy_threshold = 4
     else:
         xy_threshold = 0
     log = get_logger(verbose=verbose, use_json=use_json)
 
-    dataframe_cdr3, dataframe, dataframe_kappa, hilary = cdr3_method(
+    dataframe_cdr3, dataframe, dataframe_light, hilary = cdr3_method(
         data_path=data_path,
-        kappa_file=kappa_file,
+        light_file=light_file,
         verbose=verbose,
         threads=threads,
         precision=precision,
@@ -440,14 +440,14 @@ def full_method(
     dataframe.drop(columns=["cdr3_based_family"], inplace=True)
     save_dataframe(dataframe=dataframe, save_path=output_path)
 
-    if dataframe_kappa is not None:
-        dataframe_kappa["clone_id"] = dataframe_inferred["clone_id"]
-        output_path_kappa = result_folder / Path(f"inferred_full_method_{kappa_file.name}")
+    if dataframe_light is not None:
+        dataframe_light["clone_id"] = dataframe_inferred["clone_id"]
+        output_path_light = result_folder / Path(f"inferred_full_method_{light_file.name}")
         log.info(
-            "💾 SAVING RESULTS FOR KAPPA FILE",
-            output_path=output_path_kappa.as_posix(),
+            "💾 SAVING RESULTS FOR LIGHT FILE",
+            output_path=output_path_light.as_posix(),
         )
-        save_dataframe(dataframe=dataframe_kappa, save_path=output_path_kappa)
+        save_dataframe(dataframe=dataframe_light, save_path=output_path_light)
     if verbose >= 2 and "ground_truth" in dataframe.columns:
         precision_full, sensitivity_full = pairwise_evaluation(df=dataframe, partition="clone_id")
         log.debug(

@@ -172,21 +172,21 @@ def preprocess(
     if "cdr3" not in df.columns:
         df.dropna(subset=["junction"], inplace=True)
         df["cdr3"] = df["junction"].str[3:-3]
-    df["cdr3_length"] = df["cdr3"].str.len()
+    if "cdr3_length" not in df.columns:
+        df["cdr3_length"] = df["cdr3"].str.len()
     if "alt_sequence_alignment" not in df.columns:
         df.dropna(subset=["v_sequence_alignment", "j_sequence_alignment"], inplace=True)
         df["alt_sequence_alignment"] = df["v_sequence_alignment"] + df["j_sequence_alignment"]
-
     if "alt_germline_alignment" not in df.columns:
         df.dropna(subset=["v_germline_alignment", "j_germline_alignment"], inplace=True)
-        df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
-
-    df["mutation_count"] = applyParallel(
-        df.groupby(["v_gene", "j_gene", "cdr3_length"]),
-        count_mutations,
-        silent=silent,
-        cpuCount=threads,
-    )
+        df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"] 
+    if "mutation_count" not in df.columns:
+        df["mutation_count"] = applyParallel(
+            df.groupby(["v_gene", "j_gene", "cdr3_length"]),
+            count_mutations,
+            silent=silent,
+            cpuCount=threads,
+        )
     return df[usecols].dropna().astype({"cdr3_length": int})
 
 
