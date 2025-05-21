@@ -6,7 +6,7 @@ import json
 import logging
 from itertools import combinations
 from multiprocessing import Pool
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 import numpy as np
 import pandas as pd
@@ -88,6 +88,49 @@ def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd
     )
     return cdf_df
 
+def chunked_func(x, func):
+    return pd.concat([func(g) for g in x])
+
+def applyChunkedParallel(
+    dfGrouped: Iterable,
+    func: Callable,
+    cpuCount: int = 1,
+    silent=False,
+    isint=False,
+) -> pd.DataFrame:
+    """Parallely runs func on each group of dfGrouped.
+
+    Args:
+        dfGrouped (Iterable): Func runs parallely on each element of the list dfGrouped
+        func (Callable): Function to run on dfGrouped
+        cpuCount (int, optional): Number of cpus to use. Defaults to 1.
+        silent (bool): if true do not show progress bars.
+        isint (bool): if true return list of pd.Dataframes instead of concatenated pd.Dataframe.
+
+    Returns
+    -------
+        pd.Dataframe: Dataframe concatenating output of func on each group.
+    """
+    if not isinstance(dfGrouped, list):
+        dfGrouped = list(dfGrouped)
+    num_chunks = cpuCount * 10
+    chunk_size = np.ceil(len(dfGrouped) / num_chunks).astype(int)
+    dfGrouped_chunks = [
+        dfGrouped[i : i + chunk_size] for i in range(0, len(dfGrouped), chunk_size)
+    ]
+    
+    # Create a partial function with the func parameter
+    from functools import partial
+    chunked_func_with_func = partial(chunked_func, func=func)
+    
+    results = applyParallel(
+            dfGrouped_chunks,
+            chunked_func_with_func,
+            cpuCount=cpuCount,
+            silent=silent,
+            isint=isint,
+        )
+    return results
 
 def applyParallel(
     dfGrouped: list,

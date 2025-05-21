@@ -15,7 +15,7 @@ from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.utils import applyParallel, group_mutations, pRequired, return_cdf
+from hilary.utils import applyParallel, group_mutations, pRequired, return_cdf,applyChunkedParallel
 
 if TYPE_CHECKING:
     from hilary.apriori import Apriori
@@ -105,7 +105,7 @@ class CDR3Clustering:
         use = group + ["cdr3"]
         log.debug("Inferring clusters.", group=group)
 
-        df["cluster"] = applyParallel(
+        df["cluster"] = applyChunkedParallel(
             df[use].groupby(group),
             self.cluster,
             silent=silent,
@@ -309,6 +309,7 @@ class HILARy:
         self.lengths = apriori.lengths
         self.threads = apriori.threads
         self.cdf_path = apriori.cdf_path
+        self.paired=apriori.paired
 
     def simulate_xs_ys(
         self,
@@ -337,7 +338,7 @@ class HILARy:
         size = int(1e6)
         (_, _, _, prevalence, mutations, alignment_length, class_id, null_model) = args
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
-        cdr3_length = classes_temp.cdr3_length.values[0]
+        cdr3_length = classes_temp.cdr3_length_value.values[0]
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
         if cdr3_length not in self.lengths or (len(mutations) < 100):
@@ -407,7 +408,7 @@ class HILARy:
                 ]
             ]
         )
-        mutations_grouped = applyParallel(
+        mutations_grouped = applyChunkedParallel(
             merged.groupby("class_id"),
             group_mutations,
             cpuCount=self.threads,
@@ -468,9 +469,15 @@ class HILARy:
             pd.Series: New clusters made of grouped precise clusters.
         """
         df = args[1]  # (vgene, jgene, cdr3length, sensitive cluster), df
-        v_gene, j_gene, l, _ = args[0]
+        v_gene, j_gene, cdr3_length, _ = args[0]
+        
+        if self.paired:
+            cdr3_length_value = int(cdr3_length.split(',')[0])+int(cdr3_length.split(',')[1])
+        else:
+            cdr3_length_value = int(cdr3_length)
+    
         xy_threshold = self.classes.query(
-            "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
+            "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
         )["xy_threshold"].values[0]
 
         indices = np.unique(df["precise_cluster"])
@@ -491,8 +498,8 @@ class HILARy:
                     nL = hamming(s1, s2)
                     n0 = (n1 + n2 - nL) / 2
 
-                    exp_n = l / self.alignment_length * (nL + 1)
-                    std_n = np.sqrt(exp_n * (l + self.alignment_length) / self.alignment_length)
+                    exp_n = cdr3_length_value / self.alignment_length * (nL + 1)
+                    std_n = np.sqrt(exp_n * (cdr3_length_value + self.alignment_length) / self.alignment_length)
                     exp_n0 = n1n2 / self.alignment_length
                     std_n0 = np.sqrt(exp_n0)
                     x = (n - exp_n) / std_n
@@ -548,7 +555,7 @@ class HILARy:
             self.classes["threshold"] = fixed_threshold
         else:
             log.info(f"Using crude method with a normalized threshold of {normalized_threshold}")
-            self.classes["threshold"] = (self.classes["cdr3_length"] * normalized_threshold).astype(
+            self.classes["threshold"] = (self.classes["cdr3_length_value"] * normalized_threshold).astype(
                 int
             )
         prec = CDR3Clustering(self.classes[self.group + ["threshold"]], threads=self.threads)
@@ -590,7 +597,7 @@ class HILARy:
         else:
             log.debug("Marking classes to resolve.")
             grouped_df = df.groupby(self.group)
-            df["to_resolve"] = applyParallel(
+            df["to_resolve"] = applyChunkedParallel(
                 [grouped_df.get_group(g) for g in self.remaining],
                 self.mark_class,
                 silent=self.silent,
@@ -605,9 +612,6 @@ class HILARy:
         large_to_do = sizes[mask].index
         small_to_do = sizes[~mask].index
         return df, small_to_do, large_to_do
-
-    def chunked_class2pairs(self, x):
-        return pd.concat([self.class2pairs(g) for g in x])
 
     def infer(self, df: pd.DataFrame, size_threshold: int = 1000) -> pd.DataFrame:
         """Infer family clusters.
@@ -639,16 +643,22 @@ class HILARy:
         small_df = small_to_do_df.merge(df)
         small_df.index = small_df["index"].values
         small_df = small_df.drop(columns=["index"])
-        grouped_list = list(small_df.groupby(self.group + ["sensitive_cluster"]))
-        num_chunks = self.threads * 10
-        chunk_size = np.ceil(len(small_to_do) / num_chunks).astype(int)
-        small_to_do_chunks = [
-            grouped_list[i : i + chunk_size] for i in range(0, len(grouped_list), chunk_size)
-        ]
-
-        df["family_cluster"] = applyParallel(
-            small_to_do_chunks, self.chunked_class2pairs, silent=self.silent, cpuCount=self.threads
+        
+        df['family_cluster'] = applyChunkedParallel(
+            small_df.groupby(self.group + ["sensitive_cluster"]),
+            self.class2pairs,
+            silent=self.silent,
+            cpuCount=self.threads,
         )
+        # num_chunks = self.threads * 10
+        # chunk_size = np.ceil(len(small_to_do) / num_chunks).astype(int)
+        # small_to_do_chunks = [
+        #     grouped_list[i : i + chunk_size] for i in range(0, len(grouped_list), chunk_size)
+        # ]
+
+        # df["family_cluster"] = applyParallel(
+        #     small_to_do_chunks, self.chunked_class2pairs, silent=self.silent, cpuCount=self.threads
+        # )
         # for big family clusters we run each family independently and compute the distance matrix in parallel
         log.debug("Inferring family clusters for large groups.")
         large_to_do_df = pd.DataFrame(list(large_to_do), columns=large_to_do.names)
@@ -656,18 +666,22 @@ class HILARy:
         large_df = large_to_do_df.merge(df)
         large_df.index = large_df["index"].values
         large_df = large_df.drop(columns=["index"])
+        if self.paired:
+            large_df['cdr3_length_value']=large_df.cdr3_length.apply(lambda x: int(x.split(',')[0])+int(x.split(',')[1]))
+        else:
+            large_df['cdr3_length_value']=large_df.cdr3_length.astype(int)
         grouped_list = list(
-            large_df.groupby(["v_gene", "j_gene", "cdr3_length", "sensitive_cluster"])
+            large_df.groupby(["v_gene", "j_gene", "cdr3_length", "sensitive_cluster","cdr3_length_value"])
         )
 
         large_dict = {}
         for g, grouped_df in tqdm(grouped_list):
-            v_gene, j_gene, l, sensitive_cluster = g
+            v_gene, j_gene, cdr3_length, _, cdr3_length_value = g
             xy_threshold = self.classes.query(
-                "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@l"
+                "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
             )["xy_threshold"].values[0]
             dm = DistanceMatrix(
-                l=l,
+                l=cdr3_length_value,
                 alignment_length=self.alignment_length,
                 df=grouped_df[
                     ["cdr3", "alt_sequence_alignment", "mutation_count", "precise_cluster"]

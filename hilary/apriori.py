@@ -15,7 +15,7 @@ from scipy.stats import poisson
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import applyParallel, cdf_to_pmf, preprocess, return_cdf
+from hilary.utils import cdf_to_pmf, preprocess, return_cdf,applyChunkedParallel
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -37,7 +37,7 @@ class Apriori:
         null_model: str = "vjl",
         recenter_mean: bool = False,
         infer_cdf: bool = False,
-        model=None
+        model:str="human_B_heavy"
     ) -> None:
         """Initialize attributes to later run class methods.
 
@@ -81,16 +81,16 @@ class Apriori:
                 f"cdfs/{model}.parquet"
             )
         else:
-            self.null_model = "l"
+            self.null_model = "jl"
             if 'human' in self.model:
-                self.lengths = np.arange(57, 144 + 3, 3).astype(int)
+                self.lengths = np.arange(30, 141 + 3, 3).astype(int)
+                self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/human_paired.parquet")
             elif 'mouse' in self.model:
-                msg = "Paired method for mouse not implemented yet."
-                raise ValueError(msg)
+                self.lengths = np.arange(21, 102 + 3, 3).astype(int)
+                self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/mouse_paired.parquet")
             else:
                 msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
-            self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/cdfs_paired.parquet")
 
         self.classes = pd.DataFrame()
 
@@ -108,14 +108,14 @@ class Apriori:
         -------
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        if self.species == "mouse" and self.paired:  # to remove when implemented
-            msg = "Paired method not working for mouse species  yet"
+        if "mouse" in self.model and self.paired:  # to remove when implemented
+            msg = "Paired method not working for mouse species yet"
             raise ValueError(msg)
         df = preprocess(
             df,
             silent=self.silent,
         )
-        if self.species == "mouse" and "IGHJ0-7IA7" not in np.unique(
+        if "mouse" in self.model and "IGHJ0-7IA7" not in np.unique(
             df.j_gene
         ):  # mouse translation to imgt
             translation_df = pd.read_csv(
@@ -132,7 +132,7 @@ class Apriori:
                     continue
                 df[column + "_h"] = df[column]
                 df[column + "_k"] = df_light[column]
-                df[column] = df[column + "_h"] + df[column + "_k"]
+                df[column] = df[column + "_h"].astype(str) +','+ df[column + "_k"].astype(str)
         return df
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
@@ -149,7 +149,7 @@ class Apriori:
                 ),
                 density=False,
             )[0],
-            columns=[i],
+            columns=i,
         ).transpose()
 
     def compute_allvjl(
@@ -165,21 +165,16 @@ class Apriori:
         -------
             pd.DataFrame: Histogram of distances for large VJl classes.
         """
-        query = "v_gene != 'None' and pair_count >0 and cdr3_length in @self.lengths"
-        groups = df.groupby(["v_gene", "j_gene", "cdr3_length"])
+        # query to select only the classes with v_gene != None and pair_count > 0
+        df.cdr3_length=df.cdr3_length.astype(str)        
+        df=df.merge(self.classes.query('v_gene!="None" and pair_count>0')[['class_id','v_gene','j_gene','cdr3_length']],
+                    on=['v_gene','j_gene','cdr3_length'],how='inner')
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",
         )
-        results = applyParallel(
-            [
-                (
-                    row.class_id,
-                    groups.get_group((row.v_gene, row.j_gene, row.cdr3_length)).sample(
-                        frac=min(np.sqrt(self.nmax / row.pair_count), 1),
-                    ),
-                )
-                for _, row in self.classes.query(query).iterrows()
-            ],
+        
+        results = applyChunkedParallel(
+            df.groupby(["class_id"]),
             self.vjls2x,
             cpuCount=self.threads,
             silent=self.silent,
@@ -197,6 +192,12 @@ class Apriori:
         -------
             pd.DataFrame: Histogram of distances for all large classes.
         """
+        # add cdr3_length_value to classes for computation
+        if self.paired:
+            self.classes['cdr3_length_value']=self.classes.cdr3_length.apply(lambda x: int(x.split(',')[0])+int(x.split(',')[1]))
+        else:
+            self.classes['cdr3_length']=self.classes.cdr3_length.astype(str) #
+            self.classes['cdr3_length_value']=self.classes.cdr3_length.astype(int)
         hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
             "class_id",
@@ -217,7 +218,7 @@ class Apriori:
         if not isinstance(class_id, int):
             class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
-        cdr3_length = classes_temp.cdr3_length.values[0]
+        cdr3_length = classes_temp.cdr3_length_value.values[0]
         # clip to the range of lengths. Do we have a better plan here?
         cdr3_length = np.clip(cdr3_length, np.min(self.lengths), np.max(self.lengths))
         v_gene = classes_temp.v_gene.values[0]
@@ -343,19 +344,20 @@ class Apriori:
         log.debug(
             "Computing prevalence and mean distance for all classes",
         )
-        parameters = applyParallel(
+        parameters = applyChunkedParallel(
             self.histograms.groupby(["class_id"]),
             self.estimate,
             cpuCount=self.threads,
             silent=self.silent,
         ).reset_index(drop=True)
+
         self.classes.index = self.classes.class_id
         parameters.index = parameters.class_id
         self.classes["prevalence"] = parameters["prevalence"]
         self.classes["null_model"] = parameters["null_model"]
 
         self.classes["error"] = parameters["error"]
-        self.classes["mean_distance"] = parameters["mu"] / self.classes["cdr3_length"] # here we divide by cdr3_length
+        self.classes["mean_distance"] = parameters["mu"] / self.classes["cdr3_length_value"] # here we divide by cdr3_length
         self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2) #0.2 is the right default?
         self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(0.04,) #0.04 is the right default?
         self.classes["precise_threshold"] = parameters["t_prec"]
@@ -369,10 +371,10 @@ class Apriori:
         ## // 20 --> 5% of the cdr3
         ## // 10 --> 10% of the cdr3
         self.classes["precise_threshold"] = (
-            self.classes["precise_threshold"].fillna(self.classes["cdr3_length"] // 20).astype(int)
+            self.classes["precise_threshold"].fillna(self.classes["cdr3_length_value"] // 20).astype(int)
         )
         self.classes["sensitive_threshold"] = (
-            self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length"] // 10).astype(int)
+            self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length_value"] // 10).astype(int)
         )
 
     def return_fit(self, class_id: int):
@@ -397,7 +399,9 @@ class Apriori:
         v_gene = v.v_gene.values[0]
         j_gene = v.j_gene.values[0]
         mode = v.null_model.values[0]
-        cdr3_length = v.cdr3_length.values[0]
+        cdr3_length = v.cdr3_length_value.values[0]
+        if self.paired:
+            cdr3_length=int(cdr3_length.split(',')[0])+int(cdr3_length.split(',')[1])
         bins = np.arange(cdr3_length + 1)
         hist_data = self.histograms.loc[self.histograms.class_id == class_id].values[
             0, 1 : cdr3_length + 2
