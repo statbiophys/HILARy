@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import structlog
 from scipy.special import factorial
-from scipy.stats import poisson
 from textdistance import hamming
 
 from hilary.expectmax import EM
@@ -50,6 +49,7 @@ class Apriori:
             model (str) : Model to use among 'human_B_heavy','human_B_kappa','human_B_lambda',\
                 'human_paired', 'mouse_B_heavy','mouse_B_kappa','mouse_B_lambda','mouse_B_paired'.\
                 Defaul to 'human_B_heavy'.
+            null_model(str) : Whether to use null model on vjl, jl or l class. Default to vjl.
         """
         self.threads = threads if threads > 0 else cpu_count()
         self.precision = precision - 1e-4
@@ -68,7 +68,7 @@ class Apriori:
             if "human" in self.model:
                 self.lengths = np.arange(15, 81 + 3, 3).astype(int)
             elif "mouse" in self.model:
-                self.lengths = np.arange(12, 66 + 3, 3).astype(int)
+                self.lengths = np.arange(15, 66 + 3, 3).astype(int)
             else:
                 msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
@@ -76,11 +76,11 @@ class Apriori:
         else:
             self.null_model = "jl"
             if "human" in self.model:
-                self.lengths = np.arange(30, 141 + 3, 3).astype(int)
-                self.cdf_path = Path(__file__).parent / "cdfs/human_paired.parquet"
+                self.lengths = np.arange(45, 141 + 3, 3).astype(int)
+                self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
             elif "mouse" in self.model:
                 self.lengths = np.arange(21, 102 + 3, 3).astype(int)
-                self.cdf_path = Path(__file__).parent / "cdfs/mouse_paired.parquet"
+                self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
             else:
                 msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
@@ -119,7 +119,10 @@ class Apriori:
                     continue
                 df[column + "_h"] = df[column]
                 df[column + "_k"] = df_light[column]
-                df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
+                if column=="mutation_count":
+                    df[column] = df[column + "_h"] + df[column + "_k"]
+                else:
+                    df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
         return df
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
@@ -210,8 +213,8 @@ class Apriori:
         if not isinstance(class_id, int):
             class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
-        cdr3_length = classes_temp.cdr3_length_value.values[0]
-        cdr3_length = np.clip(cdr3_length, np.min(self.lengths), np.max(self.lengths))
+        cdr3_length_old = classes_temp.cdr3_length_value.values[0]
+        cdr3_length = np.clip(cdr3_length_old, np.min(self.lengths), np.max(self.lengths))
         v_gene, j_gene = classes_temp.v_gene.values[0], classes_temp.j_gene.values[0]
         histo = h.values[0, 1:].astype(int)[: cdr3_length + 1]
 
@@ -221,18 +224,17 @@ class Apriori:
         cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
         cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
         if (self.null_model in ["vjl"]) and (not cdf_df_vjl.empty):
-            null_model_used = "VJL"
+            null_model_used = "vjl"
             cdf = cdf_df_vjl
         elif (self.null_model in ["vjl", "jl"]) and (not cdf_df_jl.empty):
-            null_model_used = "JL"
+            null_model_used = "jl"
             cdf = cdf_df_jl
         elif (self.null_model in ["vjl", "jl", "l"]) and (not cdf_df_l.empty):
-            null_model_used = "L"
+            null_model_used = "l"
             cdf = cdf_df_l
         else:
-            msg = f"Unknown CDF null model : {self.null_model} or CDF not found"
+            msg = f"Unknown {self.null_model} null model or cdf not found"
             raise ValueError(msg)
-
         cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
         em = EM(cdf=cdf0, h=histo)
         prevalence, mu = em.discrete_em()
@@ -328,61 +330,4 @@ class Apriori:
 
         self.classes["sensitive_threshold"] = (
             self.classes["t_sens"].fillna(self.classes["cdr3_length_value"] // 10).astype(int)
-        )
-
-    def return_fit(self, class_id: int) -> tuple:
-        """
-        Return fits of the distribution to the histogram data for a given class ID.
-
-        Parameters
-        ----------
-        class_id (int): The ID of the class for which the fit is to be returned.
-
-        Returns
-        -------
-        tuple: A tuple containing the following elements:
-            - bins (numpy.ndarray): The bin edges for the histogram.
-            - pdf0 (numpy.ndarray): The negative distribution.
-            - pdf1 (numpy.ndarray): The Poisson positive distribution.
-            - prevalence (float): The prevalence of the class.
-            - fitted_distribution (numpy.ndarray): The fitted distribution for the class.
-            - hist_data_normalized (numpy.ndarray): The normalized histogram data for the class.
-        """
-        v = self.classes.loc[self.classes.class_id == class_id].iloc[0]
-        mu, prevalence, mode = v.effective_mean_distance, v.prevalence, v.null_model_used
-        cdr3_length = v.cdr3_length_value
-        bins = np.arange(cdr3_length + 1)
-        hist_data = self.histograms.loc[self.histograms.class_id == class_id].iloc[0][
-            1 : cdr3_length + 2
-        ]
-        if mode == "VJL":
-            cdf_df = return_cdf(
-                self.cdf_path, v_gene=v.v_gene, j_gene=v.j_gene, cdr3_length=cdr3_length
-            )
-        elif mode == "JL":
-            cdf_df = return_cdf(
-                self.cdf_path, v_gene="None", j_gene=v.j_gene, cdr3_length=cdr3_length
-            )
-        elif mode == "L":
-            cdf_df = return_cdf(
-                self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length
-            )
-        else:
-            msg = f"Unknown null model: {mode}"
-            raise ValueError(msg)
-
-        cdf0 = cdf_df.values[0, 3 : 3 + cdr3_length + 1]
-        scaled_mu = mu * cdr3_length
-        cdf1 = ((scaled_mu**bins * np.exp(-scaled_mu)) / factorial(bins)).cumsum()
-        fitted_distribution = prevalence * poisson.pmf(bins, scaled_mu) + (
-            1 - prevalence
-        ) * cdf_to_pmf(cdf0)
-        return (
-            bins,
-            cdf_to_pmf(cdf0),
-            cdf_to_pmf(cdf1),
-            prevalence,
-            fitted_distribution,
-            hist_data / sum(hist_data),
-            mode,
         )

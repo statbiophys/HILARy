@@ -221,6 +221,18 @@ def cdr3_method(
         "--json/--text",
         help="Print logs as JSON or text.",
     ),
+    null_model: str = typer.Option(
+        "vjl",
+        "--null-model",
+        help="Whether to use null model on 'vjl', 'jl' or 'l' class. Default to vjl."
+    ),
+    model: str = typer.Option(
+        "human_B_heavy",
+        "--model",
+        help="Model to use among 'human_B_heavy','human_B_kappa','human_B_lambda',\
+                'human_paired', 'mouse_B_heavy','mouse_B_kappa','mouse_B_lambda','mouse_B_paired'.\
+                Defaul to 'human_B_heavy'."
+    ),
     saving: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Any]:
     """Infer lineages with HILARy-CDR3 from data_path excel file."""
@@ -261,6 +273,8 @@ def cdr3_method(
         paired=paired,
         threads=threads,
         precision=precision,
+        null_model=null_model,
+        model=model,
         sensitivity=sensitivity,
         silent=silent,
     )
@@ -390,6 +404,18 @@ def full_method(
         "--without-heuristic",
         help="DO not use heuristic for choosing the xy threshold.",
     ),
+    null_model: str = typer.Option(
+        "vjl",
+        "--null-model",
+        help="Whether to use null model on 'vjl', 'jl' or 'l' class. Default to vjl."
+    ),
+    model: str = typer.Option(
+        "human_B_heavy",
+        "--model",
+        help="Model to use among 'human_B_heavy','human_B_kappa','human_B_lambda',\
+                'human_paired', 'mouse_B_heavy','mouse_B_kappa','mouse_B_lambda','mouse_B_paired'.\
+                Defaul to 'human_B_heavy'."
+    )
 ) -> None:
     """Infer lineages with HILARy-full from data_path excel file."""
     if result_folder is None:
@@ -414,6 +440,8 @@ def full_method(
         config=config,
         override=override,
         use_json=use_json,
+        null_model=null_model,
+        model=model,
         saving=False,
     )
     if without_heuristic:

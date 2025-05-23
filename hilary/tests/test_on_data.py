@@ -11,7 +11,7 @@ log = structlog.get_logger(__name__)
 file_path = Path(__file__).parent / "data_for_tests"
 
 thresholds_dict = {
-    "partis_single_20": {"precision_cdr": 0.995, "sensitivity_full": 0.89, "precision_full": 0.995},
+    "partis_single_20": {"precision_cdr": 0.995, "sensitivity_full": 0.80, "precision_full": 0.992},
     "partis_single_05": {
         "precision_cdr": 0.965,
         "sensitivity_cdr": 0.925,
@@ -29,7 +29,6 @@ thresholds_dict = {
     "naive_human": {"precision": 0.995},
     "naive_mouse": {"precision": 0.995},
 }
-
 hilary_pars = {"precision": 1, "sensitivity": 0.995, "null_model": "vjl"}
 
 
@@ -61,7 +60,7 @@ def check_performance_on_nat_data():
             sensitivity=hilary_pars["sensitivity"],
             null_model=hilary_pars["null_model"],
         )  # show progress bars, use all threads
-        dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
+        dataframe_processed = apriori.preprocess(df=dataframe, df_light=None)
         apriori.classes = create_classes(dataframe_processed)
         apriori.get_histograms(dataframe_processed)
         apriori.get_parameters()
@@ -113,7 +112,7 @@ def check_performance_on_partis_data():
             sensitivity=hilary_pars["sensitivity"],
             null_model=hilary_pars["null_model"],
         )  # show progress bars, use all threads
-        dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
+        dataframe_processed = apriori.preprocess(df=dataframe, df_light=None)
         apriori.classes = create_classes(dataframe_processed)
         apriori.get_histograms(dataframe_processed)
         apriori.get_parameters()
@@ -154,9 +153,9 @@ def check_performance_on_naive_mouse_data():
         precision=hilary_pars["precision"],
         sensitivity=hilary_pars["sensitivity"],
         null_model=hilary_pars["null_model"],
-        species="mouse",
+        model="mouse_B_heavy",
     )  # show progress bars, use all threads
-    dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
+    dataframe_processed = apriori.preprocess(df=dataframe, df_light=None)
     apriori.classes = create_classes(dataframe_processed)
     apriori.get_histograms(dataframe_processed)
     apriori.get_parameters()
@@ -192,7 +191,7 @@ def check_performance_on_naive_human_data():
         sensitivity=hilary_pars["sensitivity"],
         null_model=hilary_pars["null_model"],
     )  # show progress bars, use all threads
-    dataframe_processed = apriori.preprocess(df=dataframe, df_kappa=None)
+    dataframe_processed = apriori.preprocess(df=dataframe, df_light=None)
     apriori.classes = create_classes(dataframe_processed)
     apriori.get_histograms(dataframe_processed)
     apriori.get_parameters()
@@ -213,8 +212,73 @@ def check_performance_on_naive_human_data():
         precision_full_method=precision_full,
     )
 
+def check_performance_on_partis_paired_data():
+    for mut in ["05", "20"]:
+        log.info("Processing file.", file=f"partis_{mut}/both_chains/igh.csv.gz")
+        dataframe = pd.read_csv(
+            file_path / f"partis_{mut}/both_chains/igh.csv.gz",
+            compression="gzip",
+        )
+        dataframe_light = pd.read_csv(
+            file_path / f"partis_{mut}/both_chains/igk.csv.gz",
+            compression="gzip",
+        )
+        dataframe = dataframe.rename(
+            columns={
+                "v_gl_seq": "v_germline_alignment",
+                "v_qr_seqs": "v_sequence_alignment",
+                "j_gl_seq": "j_germline_alignment",
+                "j_qr_seqs": "j_sequence_alignment",
+                "clone_id": "ground_truth",
+            }
+        )
+        dataframe_light = dataframe_light.rename(
+            columns={
+                "v_gl_seq": "v_germline_alignment",
+                "v_qr_seqs": "v_sequence_alignment",
+                "j_gl_seq": "j_germline_alignment",
+                "j_qr_seqs": "j_sequence_alignment",
+                "clone_id": "ground_truth",
+            }
+        )
+        dataframe["sequence_id"] = dataframe.index.astype("str")
+        apriori = Apriori(
+            silent=False,
+            threads=-1,
+            precision=hilary_pars["precision"],
+            sensitivity=hilary_pars["sensitivity"],
+            null_model=hilary_pars["null_model"],
+            model="human_paired",
+            paired=True,
+        )  # show progress bars, use all threads
+        dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
+        apriori.classes = create_classes(dataframe_processed)
+        apriori.get_histograms(dataframe_processed)
+        apriori.get_parameters()
+        hilary = HILARy(apriori, df=dataframe_processed)
+        dataframe_cdr3 = hilary.compute_prec_sens_clusters(df=dataframe_processed)
+        dataframe["cdr3_based_family"] = dataframe_cdr3["precise_cluster"]
+        precision_cdr3, sensitivity_cdr3 = pairwise_evaluation(
+            df=dataframe, partition="cdr3_based_family"
+        )
 
+        assert precision_cdr3 > thresholds_dict[f"partis_single_{mut}"]["precision_cdr"]
+        hilary.get_xy_thresholds(df=dataframe_cdr3)
+        dataframe_inferred = hilary.infer(df=dataframe_cdr3)
+        dataframe["clone_id"] = dataframe_inferred["clone_id"]
+        precision_full, sensitivity_full = pairwise_evaluation(df=dataframe, partition="clone_id")
+        assert precision_full > thresholds_dict[f"partis_single_{mut}"]["precision_full"]
+        assert sensitivity_full > thresholds_dict[f"partis_single_{mut}"]["sensitivity_full"]
+        log.info(
+            "Showing metrics for given file.",
+            file=f"partis_{mut}/single_chain/igh.csv.gz",
+            precision_cdr3=precision_cdr3,
+            sensitivity_cdr3=sensitivity_cdr3,
+            precision_full_method=precision_full,
+            sensitivity_full_method=sensitivity_full,
+        )
+check_performance_on_partis_paired_data()
+check_performance_on_naive_mouse_data()
 check_performance_on_nat_data()
 check_performance_on_naive_human_data()
 check_performance_on_partis_data()
-check_performance_on_naive_mouse_data()

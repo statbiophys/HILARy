@@ -60,7 +60,7 @@ repos:
     rev: 3.0.0
     hooks:
       - id: forbid-binary
-        exclude: test_files/
+        exclude: hilary/cdfs/
       - id: git-dirty  # Configure in .gitignore
       - id: shellcheck
   - repo: https://github.com/pre-commit/mirrors-clang-format

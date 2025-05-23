@@ -300,7 +300,7 @@ class HILARy:
         self.group = ["v_gene", "j_gene", "cdr3_length"]
         self.classes = apriori.classes
         self.use = [
-            "cdr3",
+            "cdr3_length",
             "alt_sequence_alignment",
             "mutation_count",
             "index",
@@ -364,15 +364,15 @@ class HILARy:
         n0s = rng.poisson(lam=exp_n0, size=size)
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
-        if null_model == "VJL":
+        if null_model == "vjl":
             cdf_df = return_cdf(
                 self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
             )
-        elif null_model == "JL":
+        elif null_model == "jl":
             cdf_df = return_cdf(
                 self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length
             )
-        elif null_model == "L":
+        elif null_model == "l":
             cdf_df = return_cdf(
                 self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length
             )
