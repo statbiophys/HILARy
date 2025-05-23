@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pandas as pd
 import structlog
-from tqdm import tqdm
 
 from hilary.apriori import Apriori
 from hilary.inference import HILARy

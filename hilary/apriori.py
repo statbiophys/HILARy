@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from itertools import combinations
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -15,83 +14,76 @@ from scipy.stats import poisson
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import cdf_to_pmf, preprocess, return_cdf,applyChunkedParallel
+from hilary.utils import apply_chunked_parallel, cdf_to_pmf, preprocess, return_cdf
 
 pd.set_option("mode.chained_assignment", None)
 
 log = structlog.get_logger(__name__)
 
+DEFAULT_PREVALENCE = 0.2
+DEFAULT_MEAN_DISTANCE = 0.04
+
 
 class Apriori:
     """Computes statistics of pairwise distances."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        nmax: int = int(1e5),
         precision: float = 1.0,
         sensitivity: float = 1.0,
         threads: int = 1,
-        #species: str = "human",
+        null_model: str = "vjl",
+        model: str = "human_B_heavy",
+        *,
         silent: bool = False,
         paired: bool = False,
-        null_model: str = "vjl",
-        recenter_mean: bool = False,
-        infer_cdf: bool = False,
-        model:str="human_B_heavy"
     ) -> None:
         """Initialize attributes to later run class methods.
 
         Args:
-            lengths (_type_, optional): CDR3 lengths used to filter non productive sequences.
-                Defaults to np.arange(15, 81 + 3, 3).
-            nmax (int, optional): For parameter inference, sample and use nmax sequences for
-                classes larger than nmax. Defaults to 100000.
             precision (float, optional): Desired precision, defaults to 1.
             sensitivity (float, optional): Desired sensitivity, defaults to 1.
             threads (int, optional): Number of cpus on which to run code, defaults to 1. -1 to use
             all available cpus.
-            species  (str) : species  of the repertoire.
             silent (bool) : If true do not to show progress bars.
             paired (bool) : If true use null distributions over paired chain sequences.
+            model (str) : Model to use among 'human_B_heavy','human_B_kappa','human_B_lambda',\
+                'human_paired', 'mouse_B_heavy','mouse_B_kappa','mouse_B_lambda','mouse_B_paired'.\
+                Defaul to 'human_B_heavy'.
         """
-        self.nmax = nmax
         self.threads = threads if threads > 0 else cpu_count()
         self.precision = precision - 1e-4
         self.sensitivity = sensitivity
         self.silent = silent
         self.paired = paired
-        self.histograms = None
+        self.histograms = pd.DataFrame
         self.mean_prevalence = None
         self.mean_mean_distance = None
         self.check_translation = False
-        #self.species = species
         self.null_model = null_model
-        self.infer_cdf = infer_cdf
-        self.recenter_mean = recenter_mean
-        self.model=model
+        self.model = model
+        # Fill default values for prevalence and mean_distance
+
         if not paired:
-            if 'human' in self.model: # for the moment specify both
+            if "human" in self.model:
                 self.lengths = np.arange(15, 81 + 3, 3).astype(int)
-            elif 'mouse' in self.model:
+            elif "mouse" in self.model:
                 self.lengths = np.arange(12, 66 + 3, 3).astype(int)
             else:
                 msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
-            self.cdf_path = Path(os.path.dirname(__file__)) / Path(
-                f"cdfs/{model}.parquet"
-            )
+            self.cdf_path = Path(__file__).parent / f"cdfs/{model}.parquet"
         else:
             self.null_model = "jl"
-            if 'human' in self.model:
+            if "human" in self.model:
                 self.lengths = np.arange(30, 141 + 3, 3).astype(int)
-                self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/human_paired.parquet")
-            elif 'mouse' in self.model:
+                self.cdf_path = Path(__file__).parent / "cdfs/human_paired.parquet"
+            elif "mouse" in self.model:
                 self.lengths = np.arange(21, 102 + 3, 3).astype(int)
-                self.cdf_path = Path(os.path.dirname(__file__)) / Path("cdfs/mouse_paired.parquet")
+                self.cdf_path = Path(__file__).parent / "cdfs/mouse_paired.parquet"
             else:
                 msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
-
         self.classes = pd.DataFrame()
 
     def preprocess(self, df: pd.DataFrame, df_light: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -108,9 +100,6 @@ class Apriori:
         -------
             pd.Dataframe: Dataframe self.df containing all sequences.
         """
-        if "mouse" in self.model and self.paired:  # to remove when implemented
-            msg = "Paired method not working for mouse species yet"
-            raise ValueError(msg)
         df = preprocess(
             df,
             silent=self.silent,
@@ -118,9 +107,7 @@ class Apriori:
         if "mouse" in self.model and "IGHJ0-7IA7" not in np.unique(
             df.j_gene
         ):  # mouse translation to imgt
-            translation_df = pd.read_csv(
-                Path(os.path.dirname(__file__)) / Path("cdfs/mouse_ogrdb2imgt.csv")
-            )
+            translation_df = pd.read_csv(Path(__file__).parent / "cdfs/mouse_ogrdb2imgt.csv")
             translation_dict = dict(zip(translation_df.values[:, 0], translation_df.values[:, 1]))
             translation_dict[np.nan] = np.nan
             df.j_gene = df.j_gene.apply(lambda x: translation_dict[x])
@@ -132,15 +119,13 @@ class Apriori:
                     continue
                 df[column + "_h"] = df[column]
                 df[column + "_k"] = df_light[column]
-                df[column] = df[column + "_h"].astype(str) +','+ df[column + "_k"].astype(str)
+                df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
         return df
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class."""
         i, df = args
-        xs = []
-        for s1, s2 in combinations(df["cdr3"].values, 2):
-            xs.append(hamming(s1, s2))
+        xs = [hamming(s1, s2) for s1, s2 in combinations(df["cdr3"].values, 2)]
         return pd.DataFrame(
             np.histogram(
                 xs,
@@ -166,17 +151,22 @@ class Apriori:
             pd.DataFrame: Histogram of distances for large VJl classes.
         """
         # query to select only the classes with v_gene != None and pair_count > 0
-        df.cdr3_length=df.cdr3_length.astype(str)        
-        df=df.merge(self.classes.query('v_gene!="None" and pair_count>0')[['class_id','v_gene','j_gene','cdr3_length']],
-                    on=['v_gene','j_gene','cdr3_length'],how='inner')
+        df.cdr3_length = df.cdr3_length.astype(str)
+        df = df.merge(
+            self.classes.query('v_gene!="None" and pair_count>0')[
+                ["class_id", "v_gene", "j_gene", "cdr3_length"]
+            ],
+            on=["v_gene", "j_gene", "cdr3_length"],
+            how="inner",
+        )
         log.debug(
             "Computing CDR3 hamming distances within all large VJl classes.",
         )
-        
-        results = applyChunkedParallel(
+
+        results = apply_chunked_parallel(
             df.groupby(["class_id"]),
             self.vjls2x,
-            cpuCount=self.threads,
+            cpu_count=self.threads,
             silent=self.silent,
         )
         results["class_id"] = results.index
@@ -194,14 +184,16 @@ class Apriori:
         """
         # add cdr3_length_value to classes for computation
         if self.paired:
-            self.classes['cdr3_length_value']=self.classes.cdr3_length.apply(lambda x: int(x.split(',')[0])+int(x.split(',')[1]))
+            self.classes["cdr3_length_value"] = self.classes.cdr3_length.apply(
+                lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
+            )
         else:
-            self.classes['cdr3_length']=self.classes.cdr3_length.astype(str) #
-            self.classes['cdr3_length_value']=self.classes.cdr3_length.astype(int)
+            self.classes["cdr3_length"] = self.classes.cdr3_length.astype(str)
+            self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
         hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
             "class_id",
-        )[["class_id"] + [*range(self.lengths[-1] + 1)]]
+        )[["class_id", *range(self.lengths[-1] + 1)]]
         return self.histograms
 
     def estimate(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
@@ -219,92 +211,51 @@ class Apriori:
             class_id = class_id[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         cdr3_length = classes_temp.cdr3_length_value.values[0]
-        # clip to the range of lengths. Do we have a better plan here?
         cdr3_length = np.clip(cdr3_length, np.min(self.lengths), np.max(self.lengths))
-        v_gene = classes_temp.v_gene.values[0]
-        j_gene = classes_temp.j_gene.values[0]
+        v_gene, j_gene = classes_temp.v_gene.values[0], classes_temp.j_gene.values[0]
         histo = h.values[0, 1:].astype(int)[: cdr3_length + 1]
-        cdf_list = []
-        names = []
-        cdf_df_vjl = return_cdf(self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length)
+
+        cdf_df_vjl = return_cdf(
+            self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
+        )
         cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
         cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
-        if self.infer_cdf:
-            if self.null_model == "vjl":
-                cdf_list.extend([cdf_df_vjl, cdf_df_jl, cdf_df_l])
-                names.extend(["VJL", "JL", "L"])
-            elif self.null_model == "jl":
-                cdf_list.extend([cdf_df_jl, cdf_df_l])
-                names.extend(["JL", "L"])
-            elif self.null_model == "l":
-                cdf_list.extend([cdf_df_l])
-                names.extend(["L"])
-            else:
-                msg = f"Unknown CDF null model : {self.null_model}"
-                raise ValueError(msg)
+        if (self.null_model in ["vjl"]) and (not cdf_df_vjl.empty):
+            null_model_used = "VJL"
+            cdf = cdf_df_vjl
+        elif (self.null_model in ["vjl", "jl"]) and (not cdf_df_jl.empty):
+            null_model_used = "JL"
+            cdf = cdf_df_jl
+        elif (self.null_model in ["vjl", "jl", "l"]) and (not cdf_df_l.empty):
+            null_model_used = "L"
+            cdf = cdf_df_l
         else:
-            if (self.null_model in ["vjl"]) and (not cdf_df_vjl.empty):  # probably a better way to code that
-                cdf_list.extend([cdf_df_vjl])
-                names.extend(["VJL"])
-            elif (self.null_model in ["vjl", "jl"]) and (not cdf_df_jl.empty):
-                cdf_list.extend([cdf_df_jl])
-                names.extend(["JL"])
-            elif (self.null_model in ["vjl", "jl", "l"]) and (not cdf_df_l.empty):
-                cdf_list.extend([cdf_df_l])
-                names.extend(["L"])
-            else:
-                msg = f"Unknown CDF null model : {self.null_model} or CDF not found"
-                raise ValueError(msg)
+            msg = f"Unknown CDF null model : {self.null_model} or CDF not found"
+            raise ValueError(msg)
 
-        min_error = np.inf
-        best_cdf0 = cdf_list[-1].values[0, 3 : 3 + cdr3_length + 1]
-        best_rho = 0
-        best_mu = 0
-        null_model = "None"
-        for i, cdf in enumerate(cdf_list):
-            if cdf.empty:  # did not find null model for vjl or jl
-                continue
-            cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
-            if self.recenter_mean:  # change with truncated mean
-                histo_pmf = histo / histo.sum()
-                pmf0 = cdf_to_pmf(cdf0)
-                shift = int(np.round(np.mean(histo_pmf[cdr3_length // 5 :]) - np.mean(pmf0[cdr3_length // 5 :])))
-                new_pmf0 = np.empty_like(pmf0)
-                if shift > 0:
-                    new_pmf0[:shift] = 0
-                    new_pmf0[shift:] = pmf0[:-shift]
-                if shift < 0:
-                    new_pmf0[shift:] = 0
-                    new_pmf0[:shift] = pmf0[-shift:]
-                if shift != 0:
-                    cdf0 = np.cumsum(new_pmf0)
-
-            em = EM(cdf=cdf0, h=histo, positives="poisson")
-            rho_poisson, mu_poisson = em.discreteEM()
-            error = em.error([rho_poisson, mu_poisson])
-            if error <= min_error:
-                best_cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
-                min_error = error
-                best_rho = rho_poisson
-                best_mu = mu_poisson
-                null_model = names[i]  # what null model is actually being used
-
-        prevalence = best_rho
+        cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
+        em = EM(cdf=cdf0, h=histo)
+        prevalence, mu = em.discrete_em()
+        error = em.error([prevalence, mu])
         bins = np.arange(cdr3_length + 1)
-        ## This best_mu is not yet divided by cdr3_length
-        cdf1 = ((best_mu**bins * np.exp(-best_mu)) / factorial(bins)).cumsum()
-        #####
-        p = best_cdf0 / cdf1
+        cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
+        p = cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
-        t_prec = (p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision).sum() - 1
+        t_prec = (
+            p < prevalence / (1 + 1e-5 - prevalence) * (1 - self.precision) / self.precision
+        ).sum() - 1
         t_prec = np.min([t_prec, t_sens], axis=0)
 
-        # check if this +1 is correct
-        pdf0,pdf1 = cdf_to_pmf(cdf0),cdf_to_pmf(cdf1)
-        TPp,TPs=(prevalence*pdf1[:t_prec+1]).sum(),(prevalence*pdf1[:t_sens+1]).sum()
-        FPp,FPs=((1-prevalence)*pdf0[:t_prec+1]).sum(),(1-prevalence)*pdf0[:t_sens+1].sum()
-        FNp,FNs=(prevalence*pdf1[t_prec+1:]).sum(),(prevalence*pdf1[t_sens+1:]).sum()
-        #TNp,TNs=((1-prevalence)*pdf0[t_prec+1:]).sum(),(1-prevalence)*pdf0[t_sens+1:].sum()
+        pdf0, pdf1 = cdf_to_pmf(cdf0), cdf_to_pmf(cdf1)
+        tp_p, tp_s = (prevalence * pdf1[: t_prec + 1]).sum(), (
+            prevalence * pdf1[: t_sens + 1]
+        ).sum()
+        fp_p, fp_s = ((1 - prevalence) * pdf0[: t_prec + 1]).sum(), (1 - prevalence) * pdf0[
+            : t_sens + 1
+        ].sum()
+        fn_p, fn_s = (prevalence * pdf1[t_prec + 1 :]).sum(), (
+            prevalence * pdf1[t_sens + 1 :]
+        ).sum()
 
         result = pd.DataFrame(
             columns=[
@@ -314,7 +265,7 @@ class Apriori:
                 "error",
                 "t_prec",
                 "t_sens",
-                "null_model",
+                "null_model_used",
                 "est_precision_tprec",
                 "est_sensitivity_tprec",
                 "est_precision_tsens",
@@ -322,62 +273,64 @@ class Apriori:
             ],
         )
         result.class_id = [class_id]
-        result.null_model = [null_model]
         result.t_prec = [t_prec]
         result.t_sens = [t_sens]
         result.prevalence = [prevalence]
-        result.mu = [best_mu]
-        result.error = [min_error]
-        result.est_precision_tprec = [TPp/(TPp+FPp+1e-6)]
-        result.est_sensitivity_tprec = [TPp/(TPp+FNp+1e-6)]
-        result.est_precision_tsens = [TPs/(TPs+FPs+1e-6)]
-        result.est_sensitivity_tsens = [TPs/(TPs+FNs+1e-6)]
+        result.mu = [mu]
+        result.error = [error]
+        result.est_precision_tprec = [tp_p / (tp_p + fp_p + 1e-6)]
+        result.est_sensitivity_tprec = [tp_p / (tp_p + fn_p + 1e-6)]
+        result.est_precision_tsens = [tp_s / (tp_s + fp_s + 1e-6)]
+        result.est_sensitivity_tsens = [tp_s / (tp_s + fn_s + 1e-6)]
+        result.null_model_used = [null_model_used]
         return result
 
     def get_parameters(self) -> None:
         """Compute prevalence and mean distance for all classes."""
-        if self.histograms is None:
-            msg = "Histogram attribute is None. Please run get_histograms method."
-            raise ValueError(
-                msg,
-            )
-        log.debug(
-            "Computing prevalence and mean distance for all classes",
-        )
-        parameters = applyChunkedParallel(
+        if self.histograms.empty:
+            msg = "Histogram is empty. Please run get_histograms method."
+            raise ValueError(msg)
+        log.debug("Computing prevalence and mean distance for all classes")
+        parameters = apply_chunked_parallel(
             self.histograms.groupby(["class_id"]),
             self.estimate,
-            cpuCount=self.threads,
+            cpu_count=self.threads,
             silent=self.silent,
         ).reset_index(drop=True)
-
         self.classes.index = self.classes.class_id
         parameters.index = parameters.class_id
-        self.classes["prevalence"] = parameters["prevalence"]
-        self.classes["null_model"] = parameters["null_model"]
+        assign_cols = [
+            "prevalence",
+            "null_model_used",
+            "error",
+            "mu",
+            "t_prec",
+            "t_sens",
+            "est_precision_tprec",
+            "est_sensitivity_tprec",
+            "est_precision_tsens",
+            "est_sensitivity_tsens",
+        ]
+        for col in assign_cols:
+            if col in parameters.columns:
+                self.classes[col] = parameters[col]
+            else:
+                log.warning("Column missing in parameters, skipping assignment", column=col)
 
-        self.classes["error"] = parameters["error"]
-        self.classes["mean_distance"] = parameters["mu"] / self.classes["cdr3_length_value"] # here we divide by cdr3_length
-        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(0.2) #0.2 is the right default?
-        self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(0.04,) #0.04 is the right default?
-        self.classes["precise_threshold"] = parameters["t_prec"]
-        self.classes["sensitive_threshold"] = parameters["t_sens"]
-
-        self.classes["est_precision_tprec"] = parameters["est_precision_tprec"]
-        self.classes["est_sensitivity_tprec"] = parameters["est_sensitivity_tprec"]
-        self.classes["est_precision_tsens"] = parameters["est_precision_tsens"]
-        self.classes["est_sensitivity_tsens"] = parameters["est_sensitivity_tsens"]
-
-        ## // 20 --> 5% of the cdr3
-        ## // 10 --> 10% of the cdr3
+        self.classes["mean_distance"] = self.classes["mu"] / self.classes["cdr3_length_value"]
+        self.classes["effective_prevalence"] = self.classes["prevalence"].fillna(DEFAULT_PREVALENCE)
+        self.classes["effective_mean_distance"] = self.classes["mean_distance"].fillna(
+            DEFAULT_MEAN_DISTANCE
+        )
         self.classes["precise_threshold"] = (
-            self.classes["precise_threshold"].fillna(self.classes["cdr3_length_value"] // 20).astype(int)
-        )
-        self.classes["sensitive_threshold"] = (
-            self.classes["sensitive_threshold"].fillna(self.classes["cdr3_length_value"] // 10).astype(int)
+            self.classes["t_prec"].fillna(self.classes["cdr3_length_value"] // 20).astype(int)
         )
 
-    def return_fit(self, class_id: int):
+        self.classes["sensitive_threshold"] = (
+            self.classes["t_sens"].fillna(self.classes["cdr3_length_value"] // 10).astype(int)
+        )
+
+    def return_fit(self, class_id: int) -> tuple:
         """
         Return fits of the distribution to the histogram data for a given class ID.
 
@@ -395,38 +348,31 @@ class Apriori:
             - fitted_distribution (numpy.ndarray): The fitted distribution for the class.
             - hist_data_normalized (numpy.ndarray): The normalized histogram data for the class.
         """
-        v = self.classes.loc[self.classes.class_id == class_id]
-        v_gene = v.v_gene.values[0]
-        j_gene = v.j_gene.values[0]
-        mode = v.null_model.values[0]
-        cdr3_length = v.cdr3_length_value.values[0]
-        if self.paired:
-            cdr3_length=int(cdr3_length.split(',')[0])+int(cdr3_length.split(',')[1])
+        v = self.classes.loc[self.classes.class_id == class_id].iloc[0]
+        mu, prevalence, mode = v.effective_mean_distance, v.prevalence, v.null_model_used
+        cdr3_length = v.cdr3_length_value
         bins = np.arange(cdr3_length + 1)
-        hist_data = self.histograms.loc[self.histograms.class_id == class_id].values[
-            0, 1 : cdr3_length + 2
+        hist_data = self.histograms.loc[self.histograms.class_id == class_id].iloc[0][
+            1 : cdr3_length + 2
         ]
-        mu = v.effective_mean_distance.values[0]
-        prevalence = v.prevalence.values[0]
-
-        cdf_df_vjl = return_cdf(
-            self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
-        )
-        cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
-        cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
-
         if mode == "VJL":
-            cdf_df = cdf_df_vjl
+            cdf_df = return_cdf(
+                self.cdf_path, v_gene=v.v_gene, j_gene=v.j_gene, cdr3_length=cdr3_length
+            )
         elif mode == "JL":
-            cdf_df = cdf_df_jl
+            cdf_df = return_cdf(
+                self.cdf_path, v_gene="None", j_gene=v.j_gene, cdr3_length=cdr3_length
+            )
         elif mode == "L":
-            cdf_df = cdf_df_l
+            cdf_df = return_cdf(
+                self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length
+            )
         else:
             msg = f"Unknown null model: {mode}"
             raise ValueError(msg)
 
         cdf0 = cdf_df.values[0, 3 : 3 + cdr3_length + 1]
-        scaled_mu=mu*cdr3_length
+        scaled_mu = mu * cdr3_length
         cdf1 = ((scaled_mu**bins * np.exp(-scaled_mu)) / factorial(bins)).cumsum()
         fitted_distribution = prevalence * poisson.pmf(bins, scaled_mu) + (
             1 - prevalence
@@ -439,5 +385,4 @@ class Apriori:
             fitted_distribution,
             hist_data / sum(hist_data),
             mode,
-
         )

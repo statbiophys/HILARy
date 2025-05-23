@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import partial
 from itertools import combinations
 from multiprocessing import Pool
-from typing import TYPE_CHECKING, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -16,12 +17,24 @@ from textdistance import hamming
 from tqdm import tqdm
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
 log = structlog.get_logger(__name__)
 
+VERBOSE_DEBUG = 2
+VERBOSE_INFO = 1
 
-def group_mutations(args):
+def group_mutations(args:tuple[int,pd.DataFrame])->pd.DataFrame:
+    """Get list of mutations for a given VJL class.
+
+    Args:
+        args (tuple[int,pd.DataFrame]): (class_id, dataframe for that class).
+
+    Returns
+    -------
+        pd.DataFrame: CLass dataframe with mutation count list.
+    """
     _, df = args
     v_gene, j_gene, cdr3_length, _, prevalence, class_id, null_model, alignment_length = df.iloc[0]
     mutations = df["mutation_count"].values
@@ -39,7 +52,6 @@ def group_mutations(args):
     ).T
 
 
-# pylint: disable=invalid-name
 def cdf_to_pmf(cdf_values):
     """
     Convert a cumulative distribution function (CDF) to a probability mass function (PMF).
@@ -58,8 +70,7 @@ def cdf_to_pmf(cdf_values):
         raise ValueError(msg)
 
     # PMF is the difference between consecutive CDF values
-    pmf_values = np.diff(cdf_values, prepend=[0])  # Prepend 0 for the first element
-    return pmf_values
+    return np.diff(cdf_values, prepend=[0])  # Prepend 0 for the first element
 
 
 def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd.DataFrame:
@@ -78,7 +89,7 @@ def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd
     if cdr3_length % 3 != 0:
         cdr3_length = round(cdr3_length / 3) * 3 # round to the nearest multiple of 3
 
-    cdf_df = pd.read_parquet(
+    return pd.read_parquet(
         cdf_path,
         filters=[
             ("v_gene", "==", v_gene),
@@ -86,24 +97,37 @@ def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd
             ("cdr3_length", "==", cdr3_length),
         ],
     )
-    return cdf_df
 
-def chunked_func(x, func):
-    return pd.concat([func(g) for g in x])
+def chunked_func(df_list:list[pd.DataFrame], func: Callable) -> pd.DataFrame:
+    """Apply a function to each element in a list and concatenates the results.
 
-def applyChunkedParallel(
-    dfGrouped: Iterable,
+    Applies a given function `func` to each element `g` in the iterable `x` (usually a list
+    of grouped DataFrames), and then concatenates the results into a single DataFrame.
+
+    Args:
+        df_list (list[pd.DataFrame]): An list of DataFrames.
+        func (Callable): A function that takes one element of `df_list` and returns a DataFrame.
+
+    Returns
+    -------
+        pd.DataFrame: A concatenated DataFrame.
+    """
+    return pd.concat([func(df) for df in df_list])
+
+def apply_chunked_parallel(
+    df_grouped: Iterable,
     func: Callable,
-    cpuCount: int = 1,
+    cpu_count: int = 1,
+    *,
     silent=False,
     isint=False,
 ) -> pd.DataFrame:
-    """Parallely runs func on each group of dfGrouped.
+    """Parallely runs func on each group of df_grouped.
 
     Args:
-        dfGrouped (Iterable): Func runs parallely on each element of the list dfGrouped
-        func (Callable): Function to run on dfGrouped
-        cpuCount (int, optional): Number of cpus to use. Defaults to 1.
+        df_grouped (Iterable): Func runs parallely on each element of the list df_grouped
+        func (Callable): Function to run on df_grouped
+        cpu_count (int, optional): Number of cpus to use. Defaults to 1.
         silent (bool): if true do not show progress bars.
         isint (bool): if true return list of pd.Dataframes instead of concatenated pd.Dataframe.
 
@@ -111,49 +135,45 @@ def applyChunkedParallel(
     -------
         pd.Dataframe: Dataframe concatenating output of func on each group.
     """
-    if not isinstance(dfGrouped, list):
-        dfGrouped = list(dfGrouped)
-    num_chunks = cpuCount * 10
-    chunk_size = np.ceil(len(dfGrouped) / num_chunks).astype(int)
-    dfGrouped_chunks = [
-        dfGrouped[i : i + chunk_size] for i in range(0, len(dfGrouped), chunk_size)
+    if not isinstance(df_grouped, list):
+        df_grouped = list(df_grouped)
+    num_chunks = cpu_count * 10
+    chunk_size = np.ceil(len(df_grouped) / num_chunks).astype(int)
+    df_grouped_chunks = [
+        df_grouped[i : i + chunk_size] for i in range(0, len(df_grouped), chunk_size)
     ]
-    
-    # Create a partial function with the func parameter
-    from functools import partial
     chunked_func_with_func = partial(chunked_func, func=func)
-    
-    results = applyParallel(
-            dfGrouped_chunks,
+    return apply_parallel(
+            df_grouped_chunks,
             chunked_func_with_func,
-            cpuCount=cpuCount,
+            cpu_count=cpu_count,
             silent=silent,
             isint=isint,
         )
-    return results
 
-def applyParallel(
-    dfGrouped: list,
+def apply_parallel(
+    df_grouped: list,
     func: Callable,
-    cpuCount: int = 1,
+    cpu_count: int = 1,
+    *,
     silent=False,
     isint=False,
 ) -> pd.DataFrame:
-    """Parallely runs func on each group of dfGrouped.
+    """Parallely runs func on each group of df_grouped.
 
     Args:
-        dfGrouped (list): Func runs parallely on each element of the list dfGrouped
-        func (Callable): Function to run on dfGrouped
-        cpuCount (int, optional): Number of cpus to use. Defaults to 1.
+        df_grouped (list): Func runs parallely on each element of the list df_grouped
+        func (Callable): Function to run on df_grouped
+        cpu_count (int, optional): Number of cpus to use. Defaults to 1.
         silent (bool): if true do not show progress bars.
 
     Returns
     -------
         pd.Dataframe: Dataframe concatenating output of func on each group.
     """
-    with Pool(cpuCount) as p:
+    with Pool(cpu_count) as p:
         ret_list = list(
-            tqdm(p.imap(func, dfGrouped), total=len(dfGrouped), disable=silent),
+            tqdm(p.imap(func, df_grouped), total=len(df_grouped), disable=silent),
         )
     if isint:
         return ret_list
@@ -181,6 +201,7 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
 
 def preprocess(
     dataframe: pd.DataFrame,
+    *,
     silent: bool = False,
     threads: int = 1,
 ) -> pd.DataFrame:
@@ -222,13 +243,13 @@ def preprocess(
         df["alt_sequence_alignment"] = df["v_sequence_alignment"] + df["j_sequence_alignment"]
     if "alt_germline_alignment" not in df.columns:
         df.dropna(subset=["v_germline_alignment", "j_germline_alignment"], inplace=True)
-        df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"] 
+        df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
     if "mutation_count" not in df.columns:
-        df["mutation_count"] = applyParallel(
+        df["mutation_count"] = apply_parallel(
             df.groupby(["v_gene", "j_gene", "cdr3_length"]),
             count_mutations,
             silent=silent,
-            cpuCount=threads,
+            cpu_count=threads,
         )
     return df[usecols].dropna().astype({"cdr3_length": int})
 
@@ -309,6 +330,7 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
         pd.DataFrame: Pandas dataframe.
     """
     suffix = input_path.suffix
+    dataframe: pd.DataFrame
     if suffix == ".xlsx":
         dataframe = pd.read_excel(input_path)
     elif suffix == ".tsv":
@@ -331,7 +353,7 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
             msg,
         )
     if config:
-        with open(config, encoding="utf-8") as user_file:
+        with config.open(encoding="utf-8") as user_file:
             column_dict = json.load(user_file)
             for key in column_dict:
                 dataframe[column_dict[key]] = dataframe[key]
@@ -351,93 +373,48 @@ def pairwise_evaluation(
     -------
         (precision,sensitivity)
     """
-    TP = 0
-    P = binom(df.groupby([truth]).size(), 2).sum()
-    TP_FP = binom(df.groupby([partition]).size(), 2).sum()
+    tp = 0
+    pos = binom(df.groupby([truth]).size(), 2).sum()
+    tp_fp = binom(df.groupby([partition]).size(), 2).sum()
     for _, family in tqdm(df.groupby([truth]), disable=True):
         for r1, r2 in combinations(family[partition], 2):
             if r1 == r2:
-                TP += 1
-
-    if (not TP_FP and P > 0) or not P:
+                tp += 1
+    if (not tp_fp and pos > 0) or not pos:
         return np.nan, np.nan
-
-    precision = TP / TP_FP
-    sensitivity = TP / P
-
-    # compute other metrics
-    # FP = TP_FP - TP
-    # N = binom(len(df), 2).sum() - P
-    # N_ = N + P - TP_FP
-    # fallout= FP / N
-    # true_prevalence = P / (P + N)
-    # estimated_prevalence =  TP_FP / (TP_FP + N_)
+    precision = tp / tp_fp
+    sensitivity = tp / pos
     return precision, sensitivity
 
 
-def CF_evaluation(
-    dataframe: pd.DataFrame, partition: str, truth: str = "ground_truth", min_size=10
-) -> tuple[float, float]:
-    """
-    Evaluate the clonal families based on the ground truth
+def p_required(prevalence:float, pi:float=0.99)->float:
+    """Get the fallout from prevalence and desired precision.
+
     Args:
-        df: DataFrame
-        partition: str
-        truth: str
-    Returns:
-        evaluation_df: DataFrame
+        prevalence (float): Prevalence.
+        pi (float, optional): Precision. Defaults to 0.99.
+
+    Returns
+    -------
+        Fallout (p): Fallout fp/(fp+tn).
     """
-
-    out = pd.DataFrame()
-    # compute clone_id size needed to comput insertions and deletions
-    # and filter out families with size < min_size
-    df = dataframe.copy()
-    fam_size = (
-        df[partition].value_counts().reset_index().rename(columns={"count": partition + "_size"})
-    )
-    df = df.merge(fam_size, on=partition)
-    df = df.loc[df[partition + "_size"] >= min_size]
-    for clone_id, df1 in tqdm(df.groupby([partition]), disable=False):
-        clone_size = len(df1)
-        # pick the most common family as ground truth and count the number of occurrences
-        family, counts = df1[truth].value_counts().reset_index().values[0]
-        # inspect the real ground truth size
-        ground_truth = len(df.loc[df[truth] == family])
-        # number of edits needed to turn the clonal family into the ground truth (insertions) + (deletions)
-        # insertions are real size of ground truth - number of occurrences in the cf (counts)
-        insertions = ground_truth - counts
-        # deletions are the size of the clone - number of occurrences of ground truth(counts)
-        deletions = clone_size - counts
-        edit_distance = insertions + deletions
-        out = pd.concat(
-            [
-                out,
-                pd.DataFrame(
-                    {
-                        "clone_id": clone_id,
-                        "ground_truth": family,
-                        "insertions": insertions,
-                        "deletions": deletions,
-                        "edit_distance": edit_distance,
-                        "clone_id_size": clone_size,
-                        "ground_truth_coverage": counts,
-                        "ground_truth_size": ground_truth,
-                    },
-                    index=[0],
-                ),
-            ]
-        )
-    return out.reset_index(drop=True)
+    return prevalence / (1 + 1e-5 - prevalence) * (1 - pi) / pi
 
 
-def pRequired(rho, pi=0.99):
-    return rho / (1 + 1e-5 - rho) * (1 - pi) / pi
+def get_logger(verbose:int, *, use_json:bool)->Any:
+    """Return logger.
 
+    Args:
+        verbose (int): Level of verbosity. 2 is DEBUG, 1 is INFO, 0 is WARNING.
+        use_json (bool): Return the logs as json (useful for processing logs in the future).
 
-def get_logger(verbose, use_json):
-    if verbose >= 2:
+    Returns
+    -------
+        Any: Logger.
+    """
+    if verbose >= VERBOSE_DEBUG:
         logging_level = logging.DEBUG
-    elif verbose == 1:
+    elif verbose == VERBOSE_INFO:
         logging_level = logging.INFO
     else:
         logging_level = logging.WARNING
@@ -455,5 +432,4 @@ def get_logger(verbose, use_json):
             renderer,
         ],
     )
-    log = structlog.get_logger()
-    return log
+    return structlog.get_logger()
