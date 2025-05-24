@@ -252,7 +252,6 @@ def preprocess(
         )
     return df[usecols].dropna().astype({"cdr3_length": int})
 
-
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     """Create VJl classes.
 
@@ -263,6 +262,7 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     -------
         pd.DataFrame: Dataframe with classes.
     """
+    df["cdr3_length"] = df.cdr3_length.astype(str)
     classes = (
         df.groupby(["v_gene", "j_gene", "cdr3_length"]).size().to_frame("sequence_count")
     ).reset_index()

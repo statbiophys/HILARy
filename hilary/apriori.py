@@ -191,7 +191,6 @@ class Apriori:
                 lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
             )
         else:
-            self.classes["cdr3_length"] = self.classes.cdr3_length.astype(str)
             self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
         hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
