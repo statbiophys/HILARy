@@ -300,7 +300,7 @@ class HILARy:
         self.group = ["v_gene", "j_gene", "cdr3_length"]
         self.classes = apriori.classes
         self.use = [
-            "cdr3_length",
+            "cdr3",
             "alt_sequence_alignment",
             "mutation_count",
             "index",
