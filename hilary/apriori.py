@@ -65,8 +65,10 @@ class Apriori:
         # Fill default values for prevalence and mean_distance
 
         if not paired:
-            if "human" in self.model:
+            if self.model=="human_B_heavy":
                 self.lengths = np.arange(15, 81 + 3, 3).astype(int)
+            elif "human" in self.model:
+                self.lengths = np.arange(15, 63 + 3, 3).astype(int)
             elif "mouse" in self.model:
                 self.lengths = np.arange(15, 66 + 3, 3).astype(int)
             else:
@@ -76,7 +78,7 @@ class Apriori:
         else:
             self.null_model = "jl"
             if "human" in self.model:
-                self.lengths = np.arange(45, 141 + 3, 3).astype(int)
+                self.lengths = np.arange(30, 141 + 3, 3).astype(int)
                 self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
             elif "mouse" in self.model:
                 self.lengths = np.arange(21, 102 + 3, 3).astype(int)
