@@ -1,9 +1,12 @@
-import os 
-import numpy as np 
+import os
+
+import numpy as np
 import pandas as pd
+
 from hilary.apriori import Apriori
 from hilary.inference import HILARy
-from hilary.utils import create_classes,pairwise_evaluation
+from hilary.utils import create_classes, pairwise_evaluation
+
 
 # here some code to infer clonal families.
 def infer_hilary(dataframe_processed,model='human_B_heavy',fast=False,precision=0.99,sensitivity=0.95,null_model='vjl'):
