@@ -25,33 +25,6 @@ log = structlog.get_logger(__name__)
 VERBOSE_DEBUG = 2
 VERBOSE_INFO = 1
 
-def group_mutations(args:tuple[int,pd.DataFrame])->pd.DataFrame:
-    """Get list of mutations for a given VJL class.
-
-    Args:
-        args (tuple[int,pd.DataFrame]): (class_id, dataframe for that class).
-
-    Returns
-    -------
-        pd.DataFrame: CLass dataframe with mutation count list.
-    """
-    _, df = args
-    v_gene, j_gene, cdr3_length, _, prevalence, class_id, null_model, alignment_length = df.iloc[0]
-    mutations = df["mutation_count"].values
-    return pd.DataFrame(
-        [
-            v_gene,
-            j_gene,
-            cdr3_length,
-            prevalence,
-            mutations,
-            alignment_length,
-            class_id,
-            null_model,
-        ]
-    ).T
-
-
 def cdf_to_pmf(cdf_values):
     """
     Convert a cumulative distribution function (CDF) to a probability mass function (PMF).
@@ -386,7 +359,7 @@ def pairwise_evaluation(
     return precision, sensitivity
 
 
-def p_required(prevalence:float, pi:float=0.99)->float:
+def p_required(prevalence:float, pi:float=0.95)->float:
     """Get the fallout from prevalence and desired precision.
 
     Args:

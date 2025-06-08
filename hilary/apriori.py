@@ -13,7 +13,7 @@ from scipy.special import factorial
 from textdistance import hamming
 
 from hilary.expectmax import EM
-from hilary.utils import apply_chunked_parallel, cdf_to_pmf, preprocess, return_cdf
+from hilary.utils import apply_chunked_parallel, cdf_to_pmf, preprocess
 
 pd.set_option("mode.chained_assignment", None)
 
@@ -216,32 +216,15 @@ class Apriori:
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         cdr3_length_old = classes_temp.cdr3_length_value.values[0]
         cdr3_length = np.clip(cdr3_length_old, np.min(self.lengths), np.max(self.lengths))
-        v_gene, j_gene = classes_temp.v_gene.values[0], classes_temp.j_gene.values[0]
         histo = h.values[0, 1:].astype(int)[: cdr3_length + 1]
 
-        cdf_df_vjl = return_cdf(
-            self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
-        )
-        cdf_df_jl = return_cdf(self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length)
-        cdf_df_l = return_cdf(self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length)
-        if (self.null_model in ["vjl"]) and (not cdf_df_vjl.empty):
-            null_model_used = "vjl"
-            cdf = cdf_df_vjl
-        elif (self.null_model in ["vjl", "jl"]) and (not cdf_df_jl.empty):
-            null_model_used = "jl"
-            cdf = cdf_df_jl
-        elif (self.null_model in ["vjl", "jl", "l"]) and (not cdf_df_l.empty):
-            null_model_used = "l"
-            cdf = cdf_df_l
-        else:
-            msg = f"Unknown {self.null_model} null model or cdf not found"
-            raise ValueError(msg)
-        cdf0 = cdf.values[0, 3 : 3 + cdr3_length + 1]
-        em = EM(cdf=cdf0, h=histo)
-        prevalence, mu = em.discrete_em()
-        error = em.error([prevalence, mu])
+        null_model_used="vjl"
+        em = EM(h=histo)
+        prevalence, mu, alpha, beta_param = em.discrete_em()
+        error = em.error([prevalence, mu, alpha, beta_param])
         bins = np.arange(cdr3_length + 1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
+        cdf0 = em.beta_binomial_pmf(em.b, em.l, alpha, beta_param).cumsum()
         p = cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
         t_prec = (
@@ -273,6 +256,8 @@ class Apriori:
                 "est_sensitivity_tprec",
                 "est_precision_tsens",
                 "est_sensitivity_tsens",
+                "alpha",
+                "beta",
             ],
         )
         result.class_id = [class_id]
@@ -286,6 +271,8 @@ class Apriori:
         result.est_precision_tsens = [tp_s / (tp_s + fp_s + 1e-6)]
         result.est_sensitivity_tsens = [tp_s / (tp_s + fn_s + 1e-6)]
         result.null_model_used = [null_model_used]
+        result.alpha = [alpha]
+        result.beta=[beta_param]
         return result
 
     def get_parameters(self) -> None:
@@ -313,6 +300,8 @@ class Apriori:
             "est_sensitivity_tprec",
             "est_precision_tsens",
             "est_sensitivity_tsens",
+            "alpha",
+            "beta",
         ]
         for col in assign_cols:
             if col in parameters.columns:

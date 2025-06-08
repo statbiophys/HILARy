@@ -18,7 +18,6 @@ from tqdm import tqdm
 from hilary.utils import (
     apply_chunked_parallel,
     apply_parallel,
-    group_mutations,
     p_required,
     return_cdf,
 )
@@ -30,6 +29,35 @@ log = structlog.get_logger()
 
 NUM_RELIABLE_SEQ=100
 SUFFICIENT_MUT_NUM=3
+from hilary.expectmax import EM
+
+def group_mutations(args:tuple[int,pd.DataFrame])->pd.DataFrame:
+    """Get list of mutations for a given VJL class.
+
+    Args:
+        args (tuple[int,pd.DataFrame]): (class_id, dataframe for that class).
+
+    Returns
+    -------
+        pd.DataFrame: CLass dataframe with mutation count list.
+    """
+    _, df = args
+    v_gene, j_gene, cdr3_length, _, prevalence, class_id, null_model, alignment_length, alpha, beta = df.iloc[0]
+    mutations = df["mutation_count"].values
+    return pd.DataFrame(
+        [
+            v_gene,
+            j_gene,
+            cdr3_length,
+            prevalence,
+            mutations,
+            alignment_length,
+            class_id,
+            null_model,
+            alpha,
+            beta
+        ]
+    ).T
 
 class CDR3Clustering:
     """
@@ -346,11 +374,9 @@ class HILARy:
         """
         rng = np.random.default_rng(seed=42)
         size = int(1e6)
-        (_, _, _, prevalence, mutations, alignment_length, class_id, null_model) = args
+        (_, _, _, prevalence, mutations, alignment_length, class_id, null_model, alpha, beta_param) = args
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         cdr3_length = classes_temp.cdr3_length_value.values[0]
-        v_gene = classes_temp.v_gene.values[0]
-        j_gene = classes_temp.j_gene.values[0]
         if cdr3_length not in self.lengths or (len(mutations) < NUM_RELIABLE_SEQ):
             return (0, class_id)
         bins = np.arange(np.max(mutations) + 1)
@@ -364,22 +390,8 @@ class HILARy:
         n0s = rng.poisson(lam=exp_n0, size=size)
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
-        if null_model == "vjl":
-            cdf_df = return_cdf(
-                self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
-            )
-        elif null_model == "jl":
-            cdf_df = return_cdf(
-                self.cdf_path, v_gene="None", j_gene=j_gene, cdr3_length=cdr3_length
-            )
-        elif null_model == "l":
-            cdf_df = return_cdf(
-                self.cdf_path, v_gene="None", j_gene="None", cdr3_length=cdr3_length
-            )
-        else:
-            msg = f"Null model {null_model} not recognized."
-            raise ValueError(msg)
-        cdf_np = cdf_df.values[0, 3 : 3 + cdr3_length]
+        em = EM(h=np.arange(cdr3_length, dtype=int))
+        cdf_np = em.beta_binomial_pmf(k=np.arange(cdr3_length, dtype=int),n=cdr3_length, alpha=alpha, beta_param=beta_param).cumsum()
         pn = np.diff(cdf_np, prepend=[0], append=[1]).astype(float)
         ns = rng.choice(np.arange(cdr3_length + 1), size=size, replace=True, p=pn / pn.sum())
         nls = np.maximum(n1s + n2s - 2 * n0s, 0)
@@ -417,6 +429,8 @@ class HILARy:
                     "class_id",
                     "null_model_used",
                     "alignment_length",
+                    "alpha",
+                    "beta",
                 ]
             ]
         )
