@@ -359,7 +359,7 @@ def pairwise_evaluation(
     return precision, sensitivity
 
 
-def p_required(prevalence:float, pi:float=0.95)->float:
+def p_required(prevalence:float, pi:float=0.9)->float:
     """Get the fallout from prevalence and desired precision.
 
     Args:
