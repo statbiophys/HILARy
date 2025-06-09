@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.special import factorial, beta, gammaln
-from scipy.optimize import minimize_scalar
+from scipy.special import factorial, gammaln
 
 
 class EM:
@@ -36,7 +35,8 @@ class EM:
             alpha (float): Alpha parameter of beta distribution
             beta_param (float): Beta parameter of beta distribution
 
-        Returns:
+        Returns
+        -------
             np.ndarray: Probability mass function values
         """
         # Using log-space computation for numerical stability
@@ -54,7 +54,8 @@ class EM:
         Args:
             theta (tuple): (Prevalence, mu, alpha, beta)
 
-        Returns:
+        Returns
+        -------
             tuple: P1 and P0 membership probabilities
         """
         rho, mu, alpha, beta_param = theta
@@ -75,7 +76,8 @@ class EM:
         Args:
             theta (tuple): (Prevalence, mu, alpha, beta)
 
-        Returns:
+        Returns
+        -------
             tuple: Updated (prevalence, mu, alpha, beta)
         """
         p1, p0 = self.discrete_expectation(theta)
@@ -128,7 +130,8 @@ class EM:
     def discrete_em(self) -> tuple[float, float, float, float]:
         """Estimate theta=(prevalence, mu, alpha, beta).
 
-        Returns:
+        Returns
+        -------
             tuple: Fitted (prevalence, mu, alpha, beta)
         """
         # Initialize parameters
@@ -156,7 +159,8 @@ class EM:
             x (np.ndarray): Values to evaluate
             theta (tuple): (prevalence, mu, alpha, beta)
 
-        Returns:
+        Returns
+        -------
             np.ndarray: Mixture distribution values
         """
         rho, mu, alpha, beta_param = theta
@@ -170,10 +174,12 @@ class EM:
         """
         Compute RMSE between observed histogram and fitted model.
 
-        Parameters:
+        Parameters
+        ----------
             theta (tuple): (Prevalence, mu, alpha, beta).
 
-        Returns:
+        Returns
+        -------
             float: Root mean squared error of the normalized histogram.
         """
         observed = self.h / self.h.sum()
@@ -184,10 +190,12 @@ class EM:
         """
         Compute log-likelihood of the model.
 
-        Parameters:
+        Parameters
+        ----------
             theta (tuple): (Prevalence, mu, alpha, beta).
 
-        Returns:
+        Returns
+        -------
             float: Log-likelihood value.
         """
         model_probs = self.discrete_mix(self.b, theta)

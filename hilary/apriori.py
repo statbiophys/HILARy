@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 import structlog
 from scipy.special import factorial
-from textdistance import hamming
 from scipy.stats import betabinom
+from textdistance import hamming
 
 from hilary.expectmax import EM
 from hilary.utils import apply_chunked_parallel, cdf_to_pmf, preprocess

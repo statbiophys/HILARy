@@ -1,8 +1,9 @@
-import numpy as np
-from scipy.stats import poisson
-from scipy.special import gammaln, logsumexp
-from scipy.optimize import minimize_scalar
 import warnings
+
+import numpy as np
+from scipy.special import gammaln
+from scipy.stats import poisson
+
 
 class EM:
     def __init__(self, h):

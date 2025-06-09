@@ -5,7 +5,6 @@ from __future__ import annotations
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING
-from scipy.stats import betabinom
 
 import numpy as np
 import pandas as pd
@@ -13,15 +12,11 @@ import structlog
 from atriegc import TrieNucl as Trie
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
+from scipy.stats import betabinom
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.utils import (
-    apply_chunked_parallel,
-    apply_parallel,
-    p_required,
-    return_cdf,
-)
+from hilary.utils import apply_chunked_parallel, apply_parallel, p_required
 
 if TYPE_CHECKING:
     from hilary.apriori import Apriori
@@ -30,7 +25,7 @@ log = structlog.get_logger()
 
 NUM_RELIABLE_SEQ=100
 SUFFICIENT_MUT_NUM=3
-from hilary.expectmax import EM
+
 
 def group_mutations(args:tuple[int,pd.DataFrame])->pd.DataFrame:
     """Get list of mutations for a given VJL class.
