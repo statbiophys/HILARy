@@ -5,6 +5,7 @@ from __future__ import annotations
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING
+from scipy.stats import betabinom
 
 import numpy as np
 import pandas as pd
@@ -390,8 +391,7 @@ class HILARy:
         n0s = rng.poisson(lam=exp_n0, size=size)
         std_n0 = np.sqrt(exp_n0)
         ys = (n0s - exp_n0) / std_n0
-        em = EM(h=np.arange(cdr3_length, dtype=int))
-        cdf_np = em.beta_binomial_pmf(k=np.arange(cdr3_length, dtype=int),n=cdr3_length, alpha=alpha, beta_param=beta_param).cumsum()
+        cdf_np = betabinom.pmf(np.arange(int(cdr3_length)), int(cdr3_length), alpha, beta_param).cumsum()
         pn = np.diff(cdf_np, prepend=[0], append=[1]).astype(float)
         ns = rng.choice(np.arange(cdr3_length + 1), size=size, replace=True, p=pn / pn.sum())
         nls = np.maximum(n1s + n2s - 2 * n0s, 0)

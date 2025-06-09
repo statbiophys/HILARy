@@ -142,7 +142,6 @@ class EM:
         for iteration in range(self.howmany):
             old_theta = theta
             theta = self.discrete_maximization(theta)
-
             # Check for convergence
             if iteration > 0:
                 change = sum(abs(new - old) for new, old in zip(theta, old_theta))

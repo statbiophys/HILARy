@@ -11,6 +11,7 @@ import pandas as pd
 import structlog
 from scipy.special import factorial
 from textdistance import hamming
+from scipy.stats import betabinom
 
 from hilary.expectmax import EM
 from hilary.utils import apply_chunked_parallel, cdf_to_pmf, preprocess
@@ -221,10 +222,10 @@ class Apriori:
         null_model_used="vjl"
         em = EM(h=histo)
         prevalence, mu, alpha, beta_param = em.discrete_em()
-        error = em.error([prevalence, mu, alpha, beta_param])
+        error = 0
         bins = np.arange(cdr3_length + 1)
         cdf1 = ((mu**bins * np.exp(-mu)) / factorial(bins)).cumsum()
-        cdf0 = em.beta_binomial_pmf(em.b, em.l, alpha, beta_param).cumsum()
+        cdf0 = betabinom.pmf(np.arange(len(histo)), int(cdr3_length), alpha, beta_param).cumsum()
         p = cdf0 / cdf1
         t_sens = (cdf1 < self.sensitivity).sum()
         t_prec = (
