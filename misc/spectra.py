@@ -5,9 +5,9 @@ import pandas as pd
 pd.options.mode.chained_assignment = None
 import numpy as np
 from tqdm import tqdm
-
-from hilary.utils import applyParallel
-from hilary.utils_simulate import mutations2Counter, mutations2Spectrum, mutationsInFamily
+from multiprocessing import cpu_count
+from hilary.utils import apply_chunked_parallel
+from .utils_simulate import mutations2Counter, mutations2Spectrum, mutationsInFamily
 
 
 class Spectra:
@@ -48,7 +48,7 @@ class Spectra:
         else:
             self.ls = ls
 
-    def compute(self, dataframe: str | pd.DataFrame, family_column: str = "FAMILY"):
+    def compute(self, dataframe: str | pd.DataFrame, family_column: str = "FAMILY",threads:int|None=None):
         """
         Compute small and large spectra in the file for each value in self.ls.
         This method reads data from the input file, processes the data in parallel to compute
@@ -75,11 +75,12 @@ class Spectra:
             dataframe = pd.read_table(dataframe)
         self.family_column = family_column
         dataframe["cdr3_length"] = dataframe["cdr3"].apply(len)
+        if threads is None:
+            threads = cpu_count()
         for cdr3_length in self.ls:
             df = dataframe.loc[dataframe["cdr3_length"] == cdr3_length]
-            self.local = applyParallel(df.groupby(df[self.family_column] % 64), self.computeSmall)
-            self.small = pd.concat([self.small, self.local], ignore_index=True)
-            self.local = applyParallel(df.groupby(df[self.family_column] % 64), self.computeLarge)
+            self.local = apply_chunked_parallel(df.groupby(df[self.family_column]), self.computeSmall,cpu_count=threads)
+            self.local = apply_chunked_parallel(df.groupby(df[self.family_column]), self.computeLarge,cpu_count=threads)
             self.large = pd.concat([self.large, self.local], ignore_index=True)
         self.small = self.small.sort_values(
             by="family_size", ascending=True, inplace=False, ignore_index=True

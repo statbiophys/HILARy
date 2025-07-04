@@ -346,18 +346,18 @@ class HILARy:
         """
         rng = np.random.default_rng(seed=42)
         size = int(1e6)
-        (_, _, _, prevalence, mutations, alignment_length, class_id, null_model) = args
+        (_, _, _, prevalence, mutations, alignment_length, class_id, null_model) = args[1].values[0]
         classes_temp = self.classes.loc[self.classes.class_id == class_id]
         cdr3_length = classes_temp.cdr3_length_value.values[0]
         v_gene = classes_temp.v_gene.values[0]
         j_gene = classes_temp.j_gene.values[0]
         if cdr3_length not in self.lengths or (len(mutations) < NUM_RELIABLE_SEQ):
-            return (0, class_id)
+            return pd.DataFrame(list(zip([0],[class_id])),columns=['xy_threshold','class_id'])
         bins = np.arange(np.max(mutations) + 1)
         pni, nis = np.histogram(mutations, bins=bins)
         p = pni[1:] / sum(pni[1:])
         if len(nis) < SUFFICIENT_MUT_NUM:
-            return (0, class_id)
+            return pd.DataFrame(list(zip([0],[class_id])),columns=['xy_threshold','class_id'])
         n1s = rng.choice(nis[1:-1], size=size, replace=True, p=p)
         n2s = rng.choice(nis[1:-1], size=size, replace=True, p=p)
         exp_n0 = n1s * n2s / alignment_length
@@ -387,10 +387,7 @@ class HILARy:
         std_n = np.sqrt(exp_n * (cdr3_length + alignment_length) / alignment_length)
         xs = (ns - exp_n) / std_n
         zs = xs - ys
-        return (
-            np.sort(zs)[min(int(size * p_required(prevalence)), size - 1)],
-            class_id,
-        )
+        return pd.DataFrame(list(zip([np.sort(zs)[min(int(size * p_required(prevalence)), size - 1)]],[class_id])),columns=['xy_threshold','class_id'])
 
     def get_xy_thresholds(self, df: pd.DataFrame) -> None:
         """Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.
@@ -425,22 +422,18 @@ class HILARy:
             group_mutations,
             cpu_count=self.threads,
             silent=self.silent,
-        )
+        ).reset_index(drop=True)
 
         log.debug(
             "Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.",
         )
-        result = apply_parallel(
-            mutations_grouped.values,
+        result = apply_chunked_parallel(
+            mutations_grouped.groupby(mutations_grouped.index),
             self.simulate_xs_ys,
             cpu_count=self.threads,
-            silent=self.silent,
-            isint=True,
-        )
-        thresholds_data = pd.DataFrame(result, columns=["xy_threshold", "class_id"]).set_index(
-            "class_id"
-        )
-        self.classes["xy_threshold"] = thresholds_data["xy_threshold"]
+            silent=self.silent
+        ).set_index('class_id')
+        self.classes["xy_threshold"] = result["xy_threshold"]
 
     def single_linkage(
         self,
