@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import structlog
 
-from hilary.apriori import Apriori
+from gitlab.HILARy.hilary.apriori_full import Apriori
 from hilary.inference import HILARy
 from hilary.utils import create_classes, pairwise_evaluation
 
