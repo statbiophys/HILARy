@@ -5,6 +5,7 @@ from __future__ import annotations
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING
+from numba import njit, prange
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,7 @@ from textdistance import hamming
 from hilary.utils import apply_chunked_parallel, apply_parallel, p_required
 
 if TYPE_CHECKING:
-    from hilary.apriori import Apriori
+    from gitlab.HILARy.hilary.apriori import Apriori
 
 log = structlog.get_logger()
 
@@ -141,51 +142,86 @@ class CDR3Clustering:
         return df.groupby(group).ngroup() + 1
 
 
-def hamming_bytes(a: np.ndarray, b: np.ndarray) -> int:
-    return np.count_nonzero(a != b)
-
-
 class DistanceMatrix:
-    def __init__(self, cdr3_l: int, alignment_length: int, df, threads: int = 1) -> None:
+    """
+    Object enabling parallel computing of the distance matrix of a large cluster.
+
+    Attributes
+    ----------
+        threads (int): Number of CPUs on which to run code.
+        l (int): CDR3 length.
+        L (int): Length of the Vgene + Jgene.
+        l_L (float): Ratio of CDR3 length to alignment length.
+        l_L_L (float): Ratio of sum of CDR3 length and alignment length to alignment length.
+        data (np.ndarray): Array of sequences grouped by (v, j, l, sensitive cluster).
+        n (int): Number of sequences.
+        k_max (int): Maximum elements in 1D distance array.
+        k_step (int): Step size for processing distance matrix in chunks.
+
+    Methods
+    -------
+        __init__(l: int, alignment_length: int, df: pd.DataFrame, threads: int = 1) -> None:
+            Initialize attributes.
+
+        metric(arg1: tuple[str, str, int, int], arg2: tuple[str, str, int, int]) -> float:
+            Compute difference between normalized CDR3 divergence & shared mutations of
+            two sequences.
+
+        proc(start: int) -> tuple[int, int, list[float]]:
+            Compute 1D distance matrix between start and start+self.k_step.
+
+        compute() -> np.ndarray:
+            Run self.proc in parallel to compute 1D distance matrix.
+    """
+
+    def __init__(
+        self,
+        cdr3_l: int,
+        alignment_length: int,
+        df: pd.DataFrame,
+        threads: int = 1,
+    ) -> None:
+        """Initialize attributes.
+
+        Args:
+            l (int): CDR3 length
+            align_length (int): Length of the Vgene + Jgene.
+            df (pd.DataFrame): Dataframe of sequences grouped by (v,j,l,sensitive cluster)
+            threads (int, optional): Number of cpus on which to run code. Defaults to 1.
+        """
         self.threads = threads
         self.l = cdr3_l
         self.L = alignment_length
         self.l_L = cdr3_l / self.L
         self.l_L_L = (cdr3_l + self.L) / self.L
-
-        df["cdr3_bytes"] = df["cdr3"].apply(
-            lambda x: np.frombuffer(x.encode("utf-8"), dtype=np.uint8)
-        )
-        cdr3_lengths = df["cdr3_bytes"].apply(len)
-        if cdr3_lengths.nunique() > 1:
-            raise ValueError("All CDR3 sequences must be the same length for stacking.")
-
-        self.cdr3 = np.stack(df["cdr3_bytes"].to_numpy())
-        df["align_bytes"] = df["alt_sequence_alignment"].apply(
-            lambda x: np.frombuffer(x.encode("utf-8"), dtype=np.uint8)
-        )
-
-        lengths = df["align_bytes"].apply(len)
-        if lengths.nunique() > 1:
-            raise ValueError("All alt_sequence_alignment strings must be the same length.")
-
-        self.align = np.stack(df["align_bytes"].to_numpy())
-        self.mut = df["mutation_count"].to_numpy()
-        self.n = self.cdr3.shape[0]
-
+        self.data = df.values
+        self.n = self.data.shape[0]
+        # maximum elements in 1D dist array
         self.k_max = self.n * (self.n - 1) // 2
-        self.k_step = max(self.n**2 // 2 // 500, 3)  # ~500 bulks
+        self.k_step = max(self.n**2 // 2 // (500), 3)  # ~500 bulks
 
-    def metric(self, i: int, j: int) -> float:
-        cdr31, cdr32 = self.cdr3[i], self.cdr3[j]
-        s1, s2 = self.align[i], self.align[j]
-        n1, n2 = self.mut[i], self.mut[j]
+    def metric(
+        self,
+        arg1: tuple[str, str, int],
+        arg2: tuple[str, str, int],
+    ) -> float:
+        """Compute difference btween normalized cdr3 divergence & shared mutations of two sequences.
 
+        Args:
+            arg1 (Tuple[str,str,int,int]): (CDR3 length, V+J sequence alignment, number of mutations
+            from germline, index) for sequence 1
+            arg2 (Tuple[str,str,int,int]): Same for sequence 2
+
+        Returns
+        -------
+            float: Difference between two quantities.
+        """
+        cdr31, s1, n1= arg1
+        cdr32, s2, n2 = arg2
         if not n1 * n2:
             return self.L
-
-        n = hamming_bytes(cdr31, cdr32)
-        nl = hamming_bytes(s1, s2)
+        n = hamming(cdr31, cdr32)
+        nl = hamming(s1, s2)
         n0 = (n1 + n2 - nl) / 2
 
         exp_n = self.l_L * (nl + 1)
@@ -196,34 +232,50 @@ class DistanceMatrix:
 
         x = (n - exp_n) / std_n
         y = (n0 - exp_n0) / std_n0
-
         return x - y
 
     def proc(self, start: int) -> tuple[int, int, list[float]]:
+        """Compute 1D distance matrix between start and start+self.k_step.
+
+        Args:
+            start (int): Index from which to compute distances.
+
+        Returns
+        -------
+            Tuple[int, int, list[float]]: Start index, End index, distance for indices inbetween
+        """
         dist = []
         k1 = start
         k2 = min(start + self.k_step, self.k_max)
-
         for k in range(k1, k2):
+            # get (i, j) for 2D distance matrix knowing (k) for 1D distance matrix
             i = int(
-                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5)
+                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
             )
             j = int(
-                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2
+                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2,
             )
-            dist.append(self.metric(i, j))
-
+            # store distance
+            a = self.data[i, :]
+            b = self.data[j, :]
+            d = self.metric(a, b)
+            dist.append(d)
         return k1, k2, dist
 
     def compute(self) -> np.ndarray:
-        dist = np.zeros(self.k_max)
+        """Run self.proc parallely to compute 1D distance matrix.
 
+        Returns
+        -------
+            np.array: 1D distance matrix
+        """
+        dist = np.zeros(self.k_max)
         with Pool(self.threads) as pool:
             for k1, k2, res in pool.imap_unordered(
-                self.proc, range(0, self.k_max, self.k_step)
+                self.proc,
+                range(0, self.k_max, self.k_step),
             ):
                 dist[k1:k2] = res
-
         return dist + self.L
 
 class HILARy:
@@ -241,6 +293,8 @@ class HILARy:
         Map precise clusters to new precise AND sensitive clusters by merging clusters together.
     class2pairs(args: tuple[tuple[str, str, int, int], pd.DataFrame]) -> pd.Series
         Group precise clusters together.
+    compute_prec_sens_clusters(df: pd.DataFrame) -> pd.DataFrame
+        Infer precise and sensitive clusters.
     compute_crude_method_clusters(df: pd.DataFrame, normalized_threshold: float = 0.2,
         fixed_threshold: int = -1) -> pd.DataFrame
         Infer precise and sensitive clusters using crude method.
@@ -272,7 +326,7 @@ class HILARy:
         if not crude:
             self.remaining = (
                 self.classes.query(
-                    "v_gene != 'None' and pair_count > 0",
+                    "v_gene != 'None' and precise_threshold<sensitive_threshold and pair_count > 0",
                 )
                 .groupby(self.group)
                 .first()
@@ -294,6 +348,7 @@ class HILARy:
                 - _: Unused argument.
                 - _: Unused argument.
                 - l (int): Length parameter.
+                - prevalence (float): Prevalence parameter.
                 - mutations (list): List of mutation counts.
                 - alignment_length (int): Length of the alignment.
                 - class_id (int): Identifier for the class.
@@ -464,6 +519,27 @@ class HILARy:
         )
         return df["index"].map(sl)
 
+    def compute_prec_sens_clusters(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Infer precise and sensitive clusters.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+
+        Returns
+        -------
+            pd.DataFrame with sensitive and precise clusters.
+        """
+        prec = CDR3Clustering(
+            self.classes[[*self.group, "precise_threshold"]], threads=self.threads
+        )
+        sens = CDR3Clustering(
+            self.classes[[*self.group, "sensitive_threshold"]],
+            threads=self.threads,
+        )
+        df["precise_cluster"] = prec.infer(df, silent=self.silent)
+        df["sensitive_cluster"] = sens.infer(df, silent=self.silent)
+        return df
+
     def compute_crude_method_clusters(
         self,
         df: pd.DataFrame,
@@ -530,6 +606,7 @@ class HILARy:
             silent=self.silent,
             cpu_count=self.threads,
         )
+        print("done")
         log.debug("Inferring family clusters for large groups.")
         large_to_do_df = pd.DataFrame(list(large_to_do), columns=large_to_do.names)
         df["index"] = df.index.values

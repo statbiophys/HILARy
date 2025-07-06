@@ -6,6 +6,7 @@ from multiprocessing import cpu_count
 
 import pandas as pd
 import structlog
+
 from hilary.utils import preprocess
 
 pd.set_option("mode.chained_assignment", None)
@@ -19,7 +20,7 @@ DEFAULT_MEAN_DISTANCE = 0.04
 class Apriori:
     """Computes statistics of pairwise distances."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         threads: int = 1,
         *,
@@ -75,18 +76,3 @@ class Apriori:
                 else:
                     df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
         return df
-
-    def get_parameters(self) -> None:
-        """Compute prevalence and mean distance for all classes."""
-        log.debug("Computing prevalence and mean distance for all classes")
-        if self.paired:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.apply(
-                lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
-            )
-        else:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
-        self.classes.index = self.classes.class_id
-        self.classes["effective_prevalence"] = DEFAULT_PREVALENCE
-        self.classes["effective_mean_distance"] = DEFAULT_MEAN_DISTANCE
-        self.classes["precise_threshold"] = -1
-        self.classes["sensitive_threshold"] = 100

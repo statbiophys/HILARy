@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import typer
 
-from hilary.apriori_full import Apriori
+from hilary.apriori import Apriori
 from hilary.inference import HILARy
 from hilary.utils import create_classes, get_logger, pairwise_evaluation, read_input, save_dataframe
 
@@ -254,9 +254,13 @@ def full_method(
     )
     dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
     apriori.classes = create_classes(dataframe_processed)
-
-    log.info("⏳ COMPUTING PARAMETERS ⏳.")
-    apriori.get_parameters()
+    if paired:
+        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.apply(
+            lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
+        )
+    else:
+        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.astype(int)
+    apriori.classes.index = apriori.classes.class_id
 
     if verbose >= 2:
         parameters_path = debug_folder / Path(f"parameters_{data_path.name}")

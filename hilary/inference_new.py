@@ -5,6 +5,7 @@ from __future__ import annotations
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING
+from numba import njit, prange
 
 import numpy as np
 import pandas as pd
@@ -18,13 +19,59 @@ from textdistance import hamming
 from hilary.utils import apply_chunked_parallel, apply_parallel, p_required
 
 if TYPE_CHECKING:
-    from hilary.apriori import Apriori
+    from gitlab.HILARy.hilary.apriori import Apriori
 
 log = structlog.get_logger()
 
 NUM_RELIABLE_SEQ=100
 SUFFICIENT_MUT_NUM=3
 
+
+@njit
+def hamming_njit(s1, s2):
+    count = 0
+    for i in range(len(s1)):
+        if s1[i] != s2[i]:
+            count += 1
+    return count
+
+
+@njit
+def metric(cdr31, s1, n1, cdr32, s2, n2, l_L, l_L_L, L):
+    if not n1 * n2:
+        return L
+
+    n = hamming_njit(cdr31, cdr32)
+    nl = hamming_njit(s1, s2)
+    n0 = (n1 + n2 - nl) / 2
+
+    exp_n = l_L * (nl + 1)
+    std_n = np.sqrt(exp_n * l_L_L)
+
+    exp_n0 = n1 * n2 / L
+    std_n0 = np.sqrt(exp_n0)
+
+    x = (n - exp_n) / std_n
+    y = (n0 - exp_n0) / std_n0
+    return x - y
+
+
+@njit(parallel=True)
+def compute_chunk(cdr3s, vjs, muts, start, end, n, l_L, l_L_L, L):
+    dist = np.empty(end - start)
+    for idx in prange(end - start):
+        k = start + idx
+
+        i = int(n - 2 - np.floor(np.sqrt(-8 * k + 4 * n * (n - 1) - 7) / 2.0 - 0.5))
+        j = int(k + i + 1 - n * (n - 1) / 2 + (n - i) * ((n - i) - 1) / 2)
+
+        d = metric(
+            cdr3s[i], vjs[i], muts[i],
+            cdr3s[j], vjs[j], muts[j],
+            l_L, l_L_L, L
+        )
+        dist[idx] = d
+    return dist
 
 def group_mutations(args:tuple[int,pd.DataFrame])->pd.DataFrame:
     """Get list of mutations for a given VJL class.
@@ -141,89 +188,41 @@ class CDR3Clustering:
         return df.groupby(group).ngroup() + 1
 
 
-def hamming_bytes(a: np.ndarray, b: np.ndarray) -> int:
-    return np.count_nonzero(a != b)
-
-
 class DistanceMatrix:
-    def __init__(self, cdr3_l: int, alignment_length: int, df, threads: int = 1) -> None:
+    def __init__(self, cdr3_l, alignment_length, df: pd.DataFrame, threads: int = 1):
         self.threads = threads
         self.l = cdr3_l
         self.L = alignment_length
-        self.l_L = cdr3_l / self.L
-        self.l_L_L = (cdr3_l + self.L) / self.L
+        self.l_L = cdr3_l / alignment_length
+        self.l_L_L = (cdr3_l + alignment_length) / alignment_length
 
-        df["cdr3_bytes"] = df["cdr3"].apply(
-            lambda x: np.frombuffer(x.encode("utf-8"), dtype=np.uint8)
-        )
-        cdr3_lengths = df["cdr3_bytes"].apply(len)
-        if cdr3_lengths.nunique() > 1:
-            raise ValueError("All CDR3 sequences must be the same length for stacking.")
+        # Max byte length — adjust based on real data if needed
+        max_cdr3_len = df["cdr3"].str.len().max()
+        max_vj_len = df["alt_sequence_alignment"].str.len().max()
 
-        self.cdr3 = np.stack(df["cdr3_bytes"].to_numpy())
-        df["align_bytes"] = df["alt_sequence_alignment"].apply(
-            lambda x: np.frombuffer(x.encode("utf-8"), dtype=np.uint8)
-        )
+        self.cdr3s = df["cdr3"].astype(f"S{max_cdr3_len}").values
+        self.vjs = df["alt_sequence_alignment"].astype(f"S{max_vj_len}").values
+        self.muts = df["mutation_count"].astype(np.int32).values
 
-        lengths = df["align_bytes"].apply(len)
-        if lengths.nunique() > 1:
-            raise ValueError("All alt_sequence_alignment strings must be the same length.")
-
-        self.align = np.stack(df["align_bytes"].to_numpy())
-        self.mut = df["mutation_count"].to_numpy()
-        self.n = self.cdr3.shape[0]
-
+        self.n = len(self.cdr3s)
         self.k_max = self.n * (self.n - 1) // 2
-        self.k_step = max(self.n**2 // 2 // 500, 3)  # ~500 bulks
+        self.k_step = max(self.n**2 // 2 // 500, 3)
 
-    def metric(self, i: int, j: int) -> float:
-        cdr31, cdr32 = self.cdr3[i], self.cdr3[j]
-        s1, s2 = self.align[i], self.align[j]
-        n1, n2 = self.mut[i], self.mut[j]
-
-        if not n1 * n2:
-            return self.L
-
-        n = hamming_bytes(cdr31, cdr32)
-        nl = hamming_bytes(s1, s2)
-        n0 = (n1 + n2 - nl) / 2
-
-        exp_n = self.l_L * (nl + 1)
-        std_n = np.sqrt(exp_n * self.l_L_L)
-
-        exp_n0 = n1 * n2 / self.L
-        std_n0 = np.sqrt(exp_n0)
-
-        x = (n - exp_n) / std_n
-        y = (n0 - exp_n0) / std_n0
-
-        return x - y
-
-    def proc(self, start: int) -> tuple[int, int, list[float]]:
-        dist = []
+    def proc(self, start):
         k1 = start
         k2 = min(start + self.k_step, self.k_max)
+        chunk = compute_chunk(
+            self.cdr3s, self.vjs, self.muts,
+            k1, k2, self.n,
+            self.l_L, self.l_L_L, self.L
+        )
+        return k1, k2, chunk
 
-        for k in range(k1, k2):
-            i = int(
-                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5)
-            )
-            j = int(
-                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2
-            )
-            dist.append(self.metric(i, j))
-
-        return k1, k2, dist
-
-    def compute(self) -> np.ndarray:
+    def compute(self):
         dist = np.zeros(self.k_max)
-
         with Pool(self.threads) as pool:
-            for k1, k2, res in pool.imap_unordered(
-                self.proc, range(0, self.k_max, self.k_step)
-            ):
-                dist[k1:k2] = res
-
+            for k1, k2, chunk in pool.imap_unordered(self.proc, range(0, self.k_max, self.k_step)):
+                dist[k1:k2] = chunk
         return dist + self.L
 
 class HILARy:
@@ -241,6 +240,8 @@ class HILARy:
         Map precise clusters to new precise AND sensitive clusters by merging clusters together.
     class2pairs(args: tuple[tuple[str, str, int, int], pd.DataFrame]) -> pd.Series
         Group precise clusters together.
+    compute_prec_sens_clusters(df: pd.DataFrame) -> pd.DataFrame
+        Infer precise and sensitive clusters.
     compute_crude_method_clusters(df: pd.DataFrame, normalized_threshold: float = 0.2,
         fixed_threshold: int = -1) -> pd.DataFrame
         Infer precise and sensitive clusters using crude method.
@@ -272,7 +273,7 @@ class HILARy:
         if not crude:
             self.remaining = (
                 self.classes.query(
-                    "v_gene != 'None' and pair_count > 0",
+                    "v_gene != 'None' and precise_threshold<sensitive_threshold and pair_count > 0",
                 )
                 .groupby(self.group)
                 .first()
@@ -294,6 +295,7 @@ class HILARy:
                 - _: Unused argument.
                 - _: Unused argument.
                 - l (int): Length parameter.
+                - prevalence (float): Prevalence parameter.
                 - mutations (list): List of mutation counts.
                 - alignment_length (int): Length of the alignment.
                 - class_id (int): Identifier for the class.
@@ -462,7 +464,29 @@ class HILARy:
             squareform(distance_matrix),
             threshold=self.alignment_length + xy_threshold,
         )
+        print("done2")
         return df["index"].map(sl)
+
+    def compute_prec_sens_clusters(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Infer precise and sensitive clusters.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+
+        Returns
+        -------
+            pd.DataFrame with sensitive and precise clusters.
+        """
+        prec = CDR3Clustering(
+            self.classes[[*self.group, "precise_threshold"]], threads=self.threads
+        )
+        sens = CDR3Clustering(
+            self.classes[[*self.group, "sensitive_threshold"]],
+            threads=self.threads,
+        )
+        df["precise_cluster"] = prec.infer(df, silent=self.silent)
+        df["sensitive_cluster"] = sens.infer(df, silent=self.silent)
+        return df
 
     def compute_crude_method_clusters(
         self,
@@ -530,6 +554,7 @@ class HILARy:
             silent=self.silent,
             cpu_count=self.threads,
         )
+        print("done")
         log.debug("Inferring family clusters for large groups.")
         large_to_do_df = pd.DataFrame(list(large_to_do), columns=large_to_do.names)
         df["index"] = df.index.values
@@ -547,7 +572,6 @@ class HILARy:
                 ["v_gene", "j_gene", "cdr3_length", "cdr3_length_value"]
             )
         )
-
         large_dict = {}
         for g, grouped_df in tqdm(grouped_list):
             v_gene, j_gene, cdr3_length, cdr3_length_value = g
