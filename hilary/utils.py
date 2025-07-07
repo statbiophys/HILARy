@@ -15,6 +15,7 @@ import structlog
 from scipy.special import binom
 from textdistance import hamming
 from tqdm import tqdm
+import random
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -136,6 +137,7 @@ def apply_chunked_parallel(
     """
     if not isinstance(df_grouped, list):
         df_grouped = list(df_grouped)
+    random.shuffle(df_grouped)
     num_chunks = cpu_count * 10
     chunk_size = np.ceil(len(df_grouped) / num_chunks).astype(int)
     df_grouped_chunks = [
@@ -148,7 +150,7 @@ def apply_chunked_parallel(
             cpu_count=cpu_count,
             silent=silent,
             isint=isint,
-        )
+        ).sort_index()
 
 def apply_parallel(
     df_grouped: list,
