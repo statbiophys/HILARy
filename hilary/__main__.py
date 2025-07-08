@@ -123,6 +123,13 @@ def crude_method(
     )
     dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
     apriori.classes = create_classes(dataframe_processed)
+    if paired:
+        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.apply(
+            lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
+        )
+    else:
+        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.astype(int)
+    apriori.classes.index = apriori.classes.class_id
     hilary = HILARy(
         apriori,
         df=dataframe_processed,
