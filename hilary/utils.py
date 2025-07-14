@@ -171,7 +171,7 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
     )
 
 
-def preprocess(
+def _preprocess(
     dataframe: pd.DataFrame,
     *,
     silent: bool = False,
@@ -224,6 +224,37 @@ def preprocess(
             cpu_count=threads,
         )
     return df[usecols].dropna().astype({"cdr3_length": int})
+
+def preprocess(df: pd.DataFrame, df_light: pd.DataFrame | None = None, silent:bool=False) -> pd.DataFrame:
+        """Remove non productive sequences from dataframe.
+
+        If df_light is not null then group VH, JH, VK and JK genes together and concatenate heavy
+        and light cdr3s.
+
+        Args:
+            df (pd.DataFrame): dataframe of heavy chain sequences.
+            df_light (pd.DataFrame): dataframe of light chain sequences.
+
+        Returns
+        -------
+            pd.Dataframe: Dataframe self.df containing all sequences.
+        """
+        df = _preprocess(
+            df,
+            silent=silent,
+        )
+        if df_light is not None:
+            df_light = _preprocess(df_light, silent=silent)
+            for column in df.columns:
+                if column == "sequence_id":
+                    continue
+                df[column + "_h"] = df[column]
+                df[column + "_k"] = df_light[column]
+                if column=="mutation_count":
+                    df[column] = df[column + "_h"] + df[column + "_k"]
+                else:
+                    df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
+        return df
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     """Create VJl classes.

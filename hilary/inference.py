@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from itertools import combinations
-from multiprocessing import Pool
-from typing import TYPE_CHECKING
+from multiprocessing import Pool, cpu_count
 
 import numpy as np
 import pandas as pd
@@ -12,13 +11,10 @@ import structlog
 from atriegc import TrieNucl as Trie
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
-from tqdm import tqdm
 from textdistance import hamming
+from tqdm import tqdm
 
 from hilary.utils import apply_chunked_parallel, apply_parallel, p_required
-
-if TYPE_CHECKING:
-    from hilary.apriori import Apriori
 
 log = structlog.get_logger()
 
@@ -253,7 +249,7 @@ class HILARy:
         Infer family clusters.
     """
 
-    def __init__(self, apriori: Apriori, df, *, crude: bool = False) -> None:
+    def __init__(self,df:pd.DataFrame,classes:pd.DataFrame,threads: int = 1,*,silent: bool = False,paired: bool = False) -> None:
         """Initialize Hilary attributes using Apriori object.
 
         Args:
@@ -261,7 +257,6 @@ class HILARy:
             xy_threshold (int): Threshold to use for the xy method.
         """
         self.group = ["v_gene", "j_gene", "cdr3_length"]
-        self.classes = apriori.classes
         self.use = [
             "cdr3",
             "alt_sequence_alignment",
@@ -269,18 +264,17 @@ class HILARy:
             "index",
         ]
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
-        if not crude:
-            self.remaining = (
-                self.classes.query(
-                    "v_gene != 'None' and pair_count > 0",
-                )
-                .groupby(self.group)
-                .first()
-                .index
+        self.threads = threads if threads > 0 else cpu_count()
+        self.silent = silent
+        self.paired = paired
+        self.classes = classes
+        if paired:
+            self.classes["cdr3_length_value"] = self.classes.cdr3_length.apply(
+                lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
             )
-        self.silent = apriori.silent
-        self.threads = apriori.threads
-        self.paired = apriori.paired
+        else:
+            self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
+        self.classes.index = self.classes.class_id
 
     def simulate_xs_ys(
         self,

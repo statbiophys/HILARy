@@ -1,18 +1,20 @@
 """Execute hilary with command line."""
-
 from __future__ import annotations
 
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Any
 
-import numpy as np
-import pandas as pd
 import typer
 
-from hilary.apriori import Apriori
 from hilary.inference import HILARy
-from hilary.utils import create_classes, get_logger, pairwise_evaluation, read_input, save_dataframe
+from hilary.utils import (
+    create_classes,
+    get_logger,
+    pairwise_evaluation,
+    preprocess,
+    read_input,
+    save_dataframe,
+)
 
 app = typer.Typer(add_completion=False)
 
@@ -117,24 +119,15 @@ def crude_method(
             path=input_path.as_posix(),
         )
         save_dataframe(dataframe=dataframe, save_path=input_path)
-    apriori = Apriori(
+    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light)
+    classes = create_classes(dataframe_processed)
+    hilary = HILARy(
+        df=dataframe_processed,
+        classes=classes,
         paired=paired,
         threads=threads,
     )
-    dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
-    apriori.classes = create_classes(dataframe_processed)
-    if paired:
-        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.apply(
-            lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
-        )
-    else:
-        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.astype(int)
-    apriori.classes.index = apriori.classes.class_id
-    hilary = HILARy(
-        apriori,
-        df=dataframe_processed,
-        crude=True,
-    )
+
     dataframe_crude = hilary.compute_crude_method_clusters(
         dataframe_processed,
         fixed_threshold=fixed_threshold,
@@ -254,20 +247,15 @@ def full_method(
     else:
         dataframe_light = None
 
-    apriori = Apriori(
+    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light)
+    classes = create_classes(dataframe_processed)
+    hilary = HILARy(
+        df=dataframe_processed,
+        classes = classes,
         paired=paired,
         threads=threads,
         silent=silent,
     )
-    dataframe_processed = apriori.preprocess(df=dataframe, df_light=dataframe_light)
-    apriori.classes = create_classes(dataframe_processed)
-    if paired:
-        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.apply(
-            lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
-        )
-    else:
-        apriori.classes["cdr3_length_value"] = apriori.classes.cdr3_length.astype(int)
-    apriori.classes.index = apriori.classes.class_id
 
     if verbose >= 2:
         parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
@@ -275,13 +263,10 @@ def full_method(
             "Saving all parameters inferred by Hilary.",
             path=parameters_path.as_posix(),
         )
-        save_dataframe(apriori.classes, parameters_path)
+        save_dataframe(hilary.classes, parameters_path)
 
     log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
-    hilary = HILARy(
-        apriori,
-        df=dataframe_processed,
-    )
+
     dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
     log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")
     hilary.get_xy_thresholds(df=dataframe_processed)
