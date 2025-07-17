@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from hilary.inference import HILARy
+from hilary.inference_new import HILARy
 from hilary.utils import (
     create_classes,
     get_logger,
@@ -235,6 +235,7 @@ def full_method(
     if "sequence_id" not in dataframe.columns:
         log.warning("No 'sequence_id' column present in file.")
         dataframe["sequence_id"] = dataframe.index.astype("str")
+    dataframe["sequence_id"]=dataframe["sequence_id"].astype(str)
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
     paired = False
@@ -246,8 +247,9 @@ def full_method(
         paired = True
     else:
         dataframe_light = None
-
+    log.info("PREPROCESSING")
     dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light)
+    log.info("CREATING CLASSES")
     classes = create_classes(dataframe_processed)
     hilary = HILARy(
         df=dataframe_processed,
@@ -264,8 +266,6 @@ def full_method(
             path=parameters_path.as_posix(),
         )
         save_dataframe(hilary.classes, parameters_path)
-
-    log.info("⏳ COMPUTING PRECISE AND SENSITIVE CLUSTERS ⏳.")
 
     dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
     log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")

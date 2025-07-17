@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 from itertools import combinations
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import structlog
 from atriegc import TrieNucl as Trie
-from scipy.cluster.hierarchy import fcluster
+from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from textdistance import hamming
 from tqdm import tqdm
-from fastcluster import linkage
 
 from hilary.utils import apply_chunked_parallel, apply_parallel, p_required
+
+if TYPE_CHECKING:
+    from gitlab.HILARy.hilary.apriori import Apriori
 
 log = structlog.get_logger()
 
@@ -47,45 +50,177 @@ def group_mutations(args:tuple[int,pd.DataFrame])->pd.DataFrame:
         ]
     ).T
 
+class CDR3Clustering:
+    """
+    A class to infer families using CDR3 length and thresholds computed by the Apriori class.
 
-def hamming_bytes(a: np.ndarray, b: np.ndarray) -> int:
-    return np.count_nonzero(a != b)
+    Attributes
+    ----------
+    thresholds : pd.DataFrame
+        Dataframe containing thresholds for each (V, J, l) class.
+    threads : int
+        Number of CPUs on which to run the code, defaults to 1.
+
+    Methods
+    -------
+    cluster(args: tuple[tuple[str, str, int], pd.DataFrame]) -> pd.Series
+        Returns cluster labels depending on thresholds in self.thresholds.
+    infer(df: pd.DataFrame, group: list[str] | None = None, silent: bool = False) -> pd.Series
+        Returns cluster labels depending on thresholds in self.thresholds.
+        Runs self.cluster in parallel on dataframe grouped by 'group' argument.
+    """
+
+    def __init__(self, thresholds: pd.DataFrame, threads: int = 1) -> None:
+        """Initialize thresholds.
+
+        Args:
+            thresholds pd.DataFrame: Dataframe containing thresholds for each (V,J,l) class.
+            threads (int, optional): Number of cpus on which to run code, defaults to 1.
+        """
+        self.thresholds = thresholds
+        self.threads = threads
+
+    def cluster(self, args: tuple[tuple[str, str, int], pd.DataFrame]) -> pd.Series:
+        """Return cluster labels depending of thresholds in self.thresholds.
+
+        Args:
+            args (Tuple[Tuple[str, str, int], pd.DataFrame]): (Vgene,Jgene,l), Dataframe
+            of sequences grouped by V,J,l class.
+
+        Returns
+        -------
+            pd.Series: Cluster labels for this V,J,l class.
+        """
+        (v, j, cdr3_l), df = args
+        trie = Trie()
+        for cdr3 in df["cdr3"]:
+            trie.insert(cdr3)
+        t = self.thresholds.loc[
+            (self.thresholds.v_gene == v)
+            & (self.thresholds.j_gene == j)
+            & (self.thresholds.cdr3_length == cdr3_l)
+        ].values[0][-1]
+        if t >= 0:
+            dct = trie.clusters(t)
+            return df["cdr3"].map(dct)
+        return pd.Series(df.index, index=df.index)
+
+    def infer(
+        self,
+        df: pd.DataFrame,
+        group: list[str] | None = None,
+        *,
+        silent: bool = False,
+    ) -> pd.Series:
+        """Return cluster labels depending of thresholds in self.thresholds.
+
+        Runs self.cluster parallely on dataframe grouped by 'group' argument.
+
+        Args:
+            df (pd.DataFrame): Dataframe of sequences.
+            group (list[str], optional): Groups on which to do parallel inferring of clusters.
+            Defaults to ["v_gene", "j_gene", "cdr3_length"].
+            silent (bool,optional) : Do not show progress bar if True.
+
+        Returns
+        -------
+            pd.Series: Series with cluster labels.
+        """
+        if group is None:
+            group = ["v_gene", "j_gene", "cdr3_length"]
+        use = [*group, "cdr3"]
+        log.debug("Inferring clusters.", group=group)
+
+        df["cluster"] = apply_chunked_parallel(
+            df[use].groupby(group),
+            self.cluster,
+            silent=silent,
+            cpu_count=self.threads,
+        )
+        group = [*group, "cluster"]
+        return df.groupby(group).ngroup() + 1
 
 
 class DistanceMatrix:
-    def __init__(self, cdr3_l: int, alignment_length: int, df, threads: int = 1) -> None:
+    """
+    Object enabling parallel computing of the distance matrix of a large cluster.
+
+    Attributes
+    ----------
+        threads (int): Number of CPUs on which to run code.
+        l (int): CDR3 length.
+        L (int): Length of the Vgene + Jgene.
+        l_L (float): Ratio of CDR3 length to alignment length.
+        l_L_L (float): Ratio of sum of CDR3 length and alignment length to alignment length.
+        data (np.ndarray): Array of sequences grouped by (v, j, l, sensitive cluster).
+        n (int): Number of sequences.
+        k_max (int): Maximum elements in 1D distance array.
+        k_step (int): Step size for processing distance matrix in chunks.
+
+    Methods
+    -------
+        __init__(l: int, alignment_length: int, df: pd.DataFrame, threads: int = 1) -> None:
+            Initialize attributes.
+
+        metric(arg1: tuple[str, str, int, int], arg2: tuple[str, str, int, int]) -> float:
+            Compute difference between normalized CDR3 divergence & shared mutations of
+            two sequences.
+
+        proc(start: int) -> tuple[int, int, list[float]]:
+            Compute 1D distance matrix between start and start+self.k_step.
+
+        compute() -> np.ndarray:
+            Run self.proc in parallel to compute 1D distance matrix.
+    """
+
+    def __init__(
+        self,
+        cdr3_l: int,
+        alignment_length: int,
+        df: pd.DataFrame,
+        threads: int = 1,
+    ) -> None:
+        """Initialize attributes.
+
+        Args:
+            l (int): CDR3 length
+            align_length (int): Length of the Vgene + Jgene.
+            df (pd.DataFrame): Dataframe of sequences grouped by (v,j,l,sensitive cluster)
+            threads (int, optional): Number of cpus on which to run code. Defaults to 1.
+        """
         self.threads = threads
         self.l = cdr3_l
         self.L = alignment_length
         self.l_L = cdr3_l / self.L
         self.l_L_L = (cdr3_l + self.L) / self.L
-
-        cdr3_lengths = df["cdr3_bytes"].apply(len)
-        if cdr3_lengths.nunique() > 1:
-            raise ValueError("All CDR3 sequences must be the same length for stacking.")
-
-        self.cdr3 = np.stack(df["cdr3_bytes"].to_numpy())
-        lengths = df["align_bytes"].apply(len)
-        if lengths.nunique() > 1:
-            raise ValueError("All alt_sequence_alignment strings must be the same length.")
-
-        self.align = np.stack(df["align_bytes"].to_numpy())
-        self.mut = df["mutation_count"].to_numpy()
-        self.n = self.cdr3.shape[0]
-
+        self.data = df.values
+        self.n = self.data.shape[0]
+        # maximum elements in 1D dist array
         self.k_max = self.n * (self.n - 1) // 2
-        self.k_step = max(self.n**2 // 2 // 1000, 3)  # ~500 bulks
+        self.k_step = max(self.n**2 // 2 // (500), 3)  # ~500 bulks
 
-    def metric(self, i: int, j: int) -> float:
-        cdr31, cdr32 = self.cdr3[i], self.cdr3[j]
-        s1, s2 = self.align[i], self.align[j]
-        n1, n2 = self.mut[i], self.mut[j]
+    def metric(
+        self,
+        arg1: tuple[str, str, int],
+        arg2: tuple[str, str, int],
+    ) -> float:
+        """Compute difference btween normalized cdr3 divergence & shared mutations of two sequences.
 
+        Args:
+            arg1 (Tuple[str,str,int,int]): (CDR3 length, V+J sequence alignment, number of mutations
+            from germline, index) for sequence 1
+            arg2 (Tuple[str,str,int,int]): Same for sequence 2
+
+        Returns
+        -------
+            float: Difference between two quantities.
+        """
+        cdr31, s1, n1= arg1
+        cdr32, s2, n2 = arg2
         if not n1 * n2:
             return self.L
-
-        n = hamming_bytes(cdr31, cdr32)
-        nl = hamming_bytes(s1, s2)
+        n = hamming(cdr31, cdr32)
+        nl = hamming(s1, s2)
         n0 = (n1 + n2 - nl) / 2
 
         exp_n = self.l_L * (nl + 1)
@@ -96,34 +231,50 @@ class DistanceMatrix:
 
         x = (n - exp_n) / std_n
         y = (n0 - exp_n0) / std_n0
-
         return x - y
 
     def proc(self, start: int) -> tuple[int, int, list[float]]:
+        """Compute 1D distance matrix between start and start+self.k_step.
+
+        Args:
+            start (int): Index from which to compute distances.
+
+        Returns
+        -------
+            Tuple[int, int, list[float]]: Start index, End index, distance for indices inbetween
+        """
         dist = []
         k1 = start
         k2 = min(start + self.k_step, self.k_max)
-
         for k in range(k1, k2):
+            # get (i, j) for 2D distance matrix knowing (k) for 1D distance matrix
             i = int(
-                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5)
+                self.n - 2 - int(np.sqrt(-8 * k + 4 * self.n * (self.n - 1) - 7) / 2.0 - 0.5),
             )
             j = int(
-                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2
+                k + i + 1 - self.n * (self.n - 1) / 2 + (self.n - i) * ((self.n - i) - 1) / 2,
             )
-            dist.append(self.metric(i, j))
-
+            # store distance
+            a = self.data[i, :]
+            b = self.data[j, :]
+            d = self.metric(a, b)
+            dist.append(d)
         return k1, k2, dist
 
     def compute(self) -> np.ndarray:
-        dist = np.zeros(self.k_max)
+        """Run self.proc parallely to compute 1D distance matrix.
 
+        Returns
+        -------
+            np.array: 1D distance matrix
+        """
+        dist = np.zeros(self.k_max)
         with Pool(self.threads) as pool:
             for k1, k2, res in pool.imap_unordered(
-                self.proc, range(0, self.k_max, self.k_step)
+                self.proc,
+                range(0, self.k_max, self.k_step),
             ):
                 dist[k1:k2] = res
-
         return dist + self.L
 
 class HILARy:
@@ -141,6 +292,8 @@ class HILARy:
         Map precise clusters to new precise AND sensitive clusters by merging clusters together.
     class2pairs(args: tuple[tuple[str, str, int, int], pd.DataFrame]) -> pd.Series
         Group precise clusters together.
+    compute_prec_sens_clusters(df: pd.DataFrame) -> pd.DataFrame
+        Infer precise and sensitive clusters.
     compute_crude_method_clusters(df: pd.DataFrame, normalized_threshold: float = 0.2,
         fixed_threshold: int = -1) -> pd.DataFrame
         Infer precise and sensitive clusters using crude method.
@@ -153,7 +306,7 @@ class HILARy:
         Infer family clusters.
     """
 
-    def __init__(self,df:pd.DataFrame,classes:pd.DataFrame,threads: int = 1,*,silent: bool = False,paired: bool = False) -> None:
+    def __init__(self, apriori: Apriori, df, *, crude: bool = False) -> None:
         """Initialize Hilary attributes using Apriori object.
 
         Args:
@@ -161,6 +314,7 @@ class HILARy:
             xy_threshold (int): Threshold to use for the xy method.
         """
         self.group = ["v_gene", "j_gene", "cdr3_length"]
+        self.classes = apriori.classes
         self.use = [
             "cdr3",
             "alt_sequence_alignment",
@@ -168,17 +322,18 @@ class HILARy:
             "index",
         ]
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
-        self.threads = threads if threads > 0 else cpu_count()
-        self.silent = silent
-        self.paired = paired
-        self.classes = classes
-        if paired:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.apply(
-                lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
+        if not crude:
+            self.remaining = (
+                self.classes.query(
+                    "v_gene != 'None' and precise_threshold<sensitive_threshold and pair_count > 0",
+                )
+                .groupby(self.group)
+                .first()
+                .index
             )
-        else:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
-        self.classes.index = self.classes.class_id
+        self.silent = apriori.silent
+        self.threads = apriori.threads
+        self.paired = apriori.paired
 
     def simulate_xs_ys(
         self,
@@ -192,6 +347,7 @@ class HILARy:
                 - _: Unused argument.
                 - _: Unused argument.
                 - l (int): Length parameter.
+                - prevalence (float): Prevalence parameter.
                 - mutations (list): List of mutation counts.
                 - alignment_length (int): Length of the alignment.
                 - class_id (int): Identifier for the class.
@@ -297,7 +453,7 @@ class HILARy:
             dict: Dictionary mapping precise clusters to their new clusters.
         """
         clusters = fcluster(
-            linkage(dist, method="single", preserve_input=False),
+            linkage(dist, method="single"),
             criterion="distance",
             t=threshold,
         )
@@ -362,6 +518,27 @@ class HILARy:
         )
         return df["index"].map(sl)
 
+    def compute_prec_sens_clusters(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Infer precise and sensitive clusters.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+
+        Returns
+        -------
+            pd.DataFrame with sensitive and precise clusters.
+        """
+        prec = CDR3Clustering(
+            self.classes[[*self.group, "precise_threshold"]], threads=self.threads
+        )
+        sens = CDR3Clustering(
+            self.classes[[*self.group, "sensitive_threshold"]],
+            threads=self.threads,
+        )
+        df["precise_cluster"] = prec.infer(df, silent=self.silent)
+        df["sensitive_cluster"] = sens.infer(df, silent=self.silent)
+        return df
+
     def compute_crude_method_clusters(
         self,
         df: pd.DataFrame,
@@ -406,12 +583,6 @@ class HILARy:
         -------
             df(pd.DataFrame): Dataframe with inferred clonal families in 'clone_id'.
         """
-        df["cdr3_bytes"] = df["cdr3"].apply(
-            lambda x: np.frombuffer(x.encode("utf-8"), dtype=np.uint8)
-        )
-        df["align_bytes"] = df["alt_sequence_alignment"].apply(
-            lambda x: np.frombuffer(x.encode("utf-8"), dtype=np.uint8)
-        )
         df_grouped = df.groupby(
             [*self.group],
         )
@@ -434,6 +605,7 @@ class HILARy:
             silent=self.silent,
             cpu_count=self.threads,
         )
+        print("done")
         log.debug("Inferring family clusters for large groups.")
         large_to_do_df = pd.DataFrame(list(large_to_do), columns=large_to_do.names)
         df["index"] = df.index.values
@@ -462,7 +634,7 @@ class HILARy:
                 cdr3_l=cdr3_length_value,
                 alignment_length=self.alignment_length,
                 df=grouped_df[
-                    ["cdr3_bytes", "align_bytes", "mutation_count"]
+                    ["cdr3", "alt_sequence_alignment", "mutation_count"]
                 ],
                 threads=self.threads,
             )
@@ -486,7 +658,5 @@ class HILARy:
         return df.drop(
             columns=[
                 "family_cluster",
-                "cdr3_bytes",
-                "align_bytes",
             ],
         )
