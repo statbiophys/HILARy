@@ -5,8 +5,8 @@ from multiprocessing import cpu_count
 from pathlib import Path
 
 import typer
-
-from hilary.inference_new import HILARy
+from hilary.cdr3_clustering import CDR3Clustering
+from hilary.inference import HILARy
 from hilary.utils import (
     create_classes,
     get_logger,
@@ -100,6 +100,7 @@ def crude_method(
     if "sequence_id" not in dataframe.columns:
         log.warning("No 'sequence_id' column present in file.")
         dataframe["sequence_id"] = dataframe.index.astype("str")
+    dataframe["sequence_id"]=dataframe["sequence_id"].astype(str)
     dataframe["sequence_id"] = dataframe["sequence_id"].str.strip("-igh")
     dataframe.set_index("sequence_id")
     paired = False
@@ -120,27 +121,26 @@ def crude_method(
         )
         save_dataframe(dataframe=dataframe, save_path=input_path)
     dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light, threads=threads)
-    classes = create_classes(dataframe_processed)
-    hilary = HILARy(
-        df=dataframe_processed,
-        classes=classes,
-        paired=paired,
-        threads=threads,
-    )
-
-    dataframe_crude = hilary.compute_crude_method_clusters(
-        dataframe_processed,
-        fixed_threshold=fixed_threshold,
-        normalized_threshold=normalized_threshold,
-    )
-    dataframe["clone_id"] = dataframe_crude["crude_method_family"]
+    classes=create_classes(dataframe_processed)
+    if fixed_threshold >= 0:
+        log.info("Using crude method with a fixed threshold.", threshold=fixed_threshold)
+        classes["threshold"] = fixed_threshold
+    else:
+        log.info(
+            "Using crude method with a normalized threshold.", threshold=normalized_threshold
+        )
+        classes["threshold"] = (
+            classes["cdr3_length_value"] * normalized_threshold
+        ).astype(int)
+    clustering=CDR3Clustering(thresholds=classes, threads=threads)
+    dataframe["clone_id"] = clustering.infer(dataframe_processed, silent=False)
     dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
 
     log.info("💾 SAVING RESULTS ", output_path=output_path.as_posix())
     output_path = result_folder / Path(f"inferred_crude_method_{data_path.name}")
     save_dataframe(dataframe=dataframe, save_path=output_path)
     if paired:
-        dataframe_light["clone_id"] = dataframe_crude["crude_method_family"]
+        dataframe_light["clone_id"] = dataframe["clone_id"]
         dataframe_light["sequence_id"] = dataframe["sequence_id"] + "-igk"
         output_path_light = result_folder / Path(f"inferred_crude_method_{light_file.name}")
         log.info(
@@ -248,25 +248,13 @@ def full_method(
     else:
         dataframe_light = None
     log.info("PREPROCESSING")
-    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light, threads=threads)
-    log.info("CREATING CLASSES")
-    classes = create_classes(dataframe_processed)
+    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light, threads=threads, silent=silent)
     hilary = HILARy(
         df=dataframe_processed,
-        classes = classes,
         paired=paired,
         threads=threads,
         silent=silent,
     )
-
-    if verbose >= 2:
-        parameters_path = debug_folder / Path(f"parameters_{data_path.name}")
-        log.debug(
-            "Saving all parameters inferred by Hilary.",
-            path=parameters_path.as_posix(),
-        )
-        save_dataframe(hilary.classes, parameters_path)
-
     dataframe["sequence_id"] = dataframe["sequence_id"] + "-igh"
     log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")
     hilary.get_xy_thresholds(df=dataframe_processed)

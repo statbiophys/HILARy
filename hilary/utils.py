@@ -9,6 +9,7 @@ from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING, Any, Callable
 import random
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,6 @@ import structlog
 from scipy.special import binom
 from textdistance import hamming
 from tqdm import tqdm
-import numba
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -46,7 +46,6 @@ def cdf_to_pmf(cdf_values):
 
     # PMF is the difference between consecutive CDF values
     return np.diff(cdf_values, prepend=[0])  # Prepend 0 for the first element
-
 
 def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd.DataFrame:
     """Return cdf distribution given VJl class.
@@ -196,6 +195,7 @@ def _preprocess(
         "v_gene",
         "j_gene",
         "cdr3_length",
+        "cdr3_length_value",
         "cdr3",
         "alt_sequence_alignment",
         "alt_germline_alignment",
@@ -210,14 +210,14 @@ def _preprocess(
     if "cdr3" not in df.columns:
         df.dropna(subset=["junction"], inplace=True)
         df["cdr3"] = df["junction"].str[3:-3]
-    if "cdr3_length" not in df.columns:
-        df["cdr3_length"] = df["cdr3"].str.len()
     if "alt_sequence_alignment" not in df.columns:
         df.dropna(subset=["v_sequence_alignment", "j_sequence_alignment"], inplace=True)
         df["alt_sequence_alignment"] = df["v_sequence_alignment"] + df["j_sequence_alignment"]
     if "alt_germline_alignment" not in df.columns:
         df.dropna(subset=["v_germline_alignment", "j_germline_alignment"], inplace=True)
         df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
+    df["cdr3_length"] = df["cdr3"].str.len().astype(str)
+    df["cdr3_length_value"]=df["cdr3_length"].astype(int)
     if "mutation_count" not in df.columns:
         df["mutation_count"] = apply_parallel(
             df.groupby(["v_gene", "j_gene", "cdr3_length"]),
@@ -253,7 +253,7 @@ def preprocess(df: pd.DataFrame, df_light: pd.DataFrame | None = None, silent:bo
                     continue
                 df[column + "_h"] = df[column]
                 df[column + "_k"] = df_light[column]
-                if column=="mutation_count":
+                if column in ["mutation_count","cdr3_length_value"]:
                     df[column] = df[column + "_h"] + df[column + "_k"]
                 else:
                     df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
@@ -269,16 +269,16 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     -------
         pd.DataFrame: Dataframe with classes.
     """
-    df["cdr3_length"] = df.cdr3_length.astype(str)
+    log.info("CREATING CLASSES")
     classes = (
-        df.groupby(["v_gene", "j_gene", "cdr3_length"]).size().to_frame("sequence_count")
+        df.groupby(["v_gene", "j_gene", "cdr3_length","cdr3_length_value"]).size().to_frame("sequence_count")
     ).reset_index()
     classes["pair_count"] = classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
-    l_classes = classes.groupby("cdr3_length")[["sequence_count", "pair_count"]].sum().reset_index()
+    l_classes = classes.groupby(["cdr3_length","cdr3_length_value"])[["sequence_count", "pair_count"]].sum().reset_index()
     l_classes["v_gene"] = "None"
     l_classes["j_gene"] = "None"
     jl_classes = (
-        classes.groupby(["j_gene", "cdr3_length"])[["sequence_count", "pair_count"]]
+        classes.groupby(["j_gene", "cdr3_length","cdr3_length_value"])[["sequence_count", "pair_count"]]
         .sum()
         .reset_index()
     )
@@ -434,3 +434,12 @@ def get_logger(verbose:int, *, use_json:bool)->Any:
         ],
     )
     return structlog.get_logger()
+
+def group_mutations(args: Tuple[int, pd.DataFrame]) -> pd.DataFrame:
+    """Get list of mutations for a given VJL class."""
+    _, df = args
+    v_gene, j_gene, cdr3_length, _, class_id, alignment_length = df.iloc[0]
+    mutations = df["mutation_count"].values
+    return pd.DataFrame([
+        v_gene, j_gene, cdr3_length, mutations, alignment_length, class_id,
+    ]).T
