@@ -119,7 +119,7 @@ def crude_method(
             path=input_path.as_posix(),
         )
         save_dataframe(dataframe=dataframe, save_path=input_path)
-    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light)
+    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light, threads=threads)
     classes = create_classes(dataframe_processed)
     hilary = HILARy(
         df=dataframe_processed,
@@ -248,7 +248,7 @@ def full_method(
     else:
         dataframe_light = None
     log.info("PREPROCESSING")
-    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light)
+    dataframe_processed = preprocess(df=dataframe, df_light=dataframe_light, threads=threads)
     log.info("CREATING CLASSES")
     classes = create_classes(dataframe_processed)
     hilary = HILARy(

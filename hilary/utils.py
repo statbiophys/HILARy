@@ -8,6 +8,7 @@ from functools import partial
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING, Any, Callable
+import random
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ import structlog
 from scipy.special import binom
 from textdistance import hamming
 from tqdm import tqdm
+import numba
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -109,6 +111,8 @@ def apply_chunked_parallel(
     """
     if not isinstance(df_grouped, list):
         df_grouped = list(df_grouped)
+    random.seed(42)
+    random.shuffle(df_grouped)
     num_chunks = cpu_count * 10
     chunk_size = np.ceil(len(df_grouped) / num_chunks).astype(int)
     df_grouped_chunks = [
@@ -121,7 +125,7 @@ def apply_chunked_parallel(
             cpu_count=cpu_count,
             silent=silent,
             isint=isint,
-        )
+        ).sort_index()
 
 def apply_parallel(
     df_grouped: list,
@@ -153,7 +157,6 @@ def apply_parallel(
         return pd.DataFrame()
     return pd.concat(ret_list)
 
-
 def count_mutations(args: tuple[int, pd.DataFrame]):
     """Compute & return Return mutation counts column for a given dataframe.
 
@@ -169,7 +172,6 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
         lambda x: hamming(*x),
         axis=1,
     )
-
 
 def _preprocess(
     dataframe: pd.DataFrame,
@@ -223,9 +225,9 @@ def _preprocess(
             silent=silent,
             cpu_count=threads,
         )
-    return df[usecols].dropna().astype({"cdr3_length": int})
+    return df[usecols].dropna().astype({"cdr3_length": int}).query("cdr3_length>0")
 
-def preprocess(df: pd.DataFrame, df_light: pd.DataFrame | None = None, silent:bool=False) -> pd.DataFrame:
+def preprocess(df: pd.DataFrame, df_light: pd.DataFrame | None = None, silent:bool=False, threads:int=1) -> pd.DataFrame:
         """Remove non productive sequences from dataframe.
 
         If df_light is not null then group VH, JH, VK and JK genes together and concatenate heavy
@@ -242,9 +244,10 @@ def preprocess(df: pd.DataFrame, df_light: pd.DataFrame | None = None, silent:bo
         df = _preprocess(
             df,
             silent=silent,
+            threads=threads,
         )
         if df_light is not None:
-            df_light = _preprocess(df_light, silent=silent)
+            df_light = _preprocess(df_light, silent=silent, threads=threads)
             for column in df.columns:
                 if column == "sequence_id":
                     continue
@@ -288,7 +291,6 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     classes.reset_index(drop=True, inplace=True)
     return classes
 
-
 def save_dataframe(dataframe: pd.DataFrame, save_path: Path) -> None:
     """Save dataframe depending on suffix.
 
@@ -315,7 +317,6 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path) -> None:
     else:
         msg = f"Format {suffix} not supported."
         raise ValueError(msg)
-
 
 def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
     """Read input file.
@@ -362,7 +363,6 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
                 dataframe[column_dict[key]] = dataframe[key]
     return dataframe
 
-
 def pairwise_evaluation(
     df: pd.DataFrame, partition: str, truth: str = "ground_truth"
 ) -> tuple[float, float]:
@@ -389,7 +389,6 @@ def pairwise_evaluation(
     sensitivity = tp / pos
     return precision, sensitivity
 
-
 def p_required(prevalence:float, pi:float=0.9)->float:
     """Get the fallout from prevalence and desired precision.
 
@@ -402,7 +401,6 @@ def p_required(prevalence:float, pi:float=0.9)->float:
         Fallout (p): Fallout fp/(fp+tn).
     """
     return prevalence / (1 + 1e-5 - prevalence) * (1 - pi) / pi
-
 
 def get_logger(verbose:int, *, use_json:bool)->Any:
     """Return logger.
