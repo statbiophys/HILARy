@@ -102,8 +102,8 @@ class DistanceMatrix:
         self.cdr3 = np.stack(df["cdr3_bytes"].to_numpy())
 
         align_lengths = df["align_bytes"].apply(len)
-        """if align_lengths.nunique() > 1:
-            raise ValueError("All alignment sequences must be the same length.")"""
+        if align_lengths.nunique() > 1:
+            raise ValueError("All alignment sequences must be the same length.")
 
         self.align = np.stack(df["align_bytes"].to_numpy())
         self.mut = df["mutation_count"].to_numpy()
