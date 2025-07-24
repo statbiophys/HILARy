@@ -88,6 +88,7 @@ class Apriori:
         i, df = args
         c=df.sample(frac=min(1,np.sqrt(1e5/df.pair_count.values[0])), random_state=42).reset_index(drop=True)
         xs = [hamming(s1, s2) for s1, s2 in combinations(c["cdr3"].values, 2)]
+
         return pd.DataFrame(
             np.histogram(
                 xs,
@@ -113,7 +114,6 @@ class Apriori:
             pd.DataFrame: Histogram of distances for large VJl classes.
         """
         # query to select only the classes with v_gene != None and pair_count > 0
-        df.cdr3_length = df.cdr3_length.astype(str)
         df = df.merge(
             self.classes.query('v_gene!="None" and pair_count>0')[
                 ["class_id", "v_gene", "j_gene", "cdr3_length", "pair_count"]
@@ -122,7 +122,7 @@ class Apriori:
             how="inner",
         )
         log.debug(
-            "Computing CDR3 hamming distances within all large VJl classes.",
+            "Computing CDR3 hamming distances within all VJl classes.",
         )
         results = apply_chunked_parallel(
             df.groupby(["class_id"]),
@@ -144,12 +144,6 @@ class Apriori:
             pd.DataFrame: Histogram of distances for all large classes.
         """
         # add cdr3_length_value to classes for computation
-        if self.paired:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.apply(
-                lambda x: int(x.split(",")[0]) + int(x.split(",")[1])
-            )
-        else:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
         hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
             "class_id",
@@ -174,7 +168,6 @@ class Apriori:
         cdr3_length = np.clip(cdr3_length_old, np.min(self.lengths), np.max(self.lengths))
         v_gene, j_gene = classes_temp.v_gene.values[0], classes_temp.j_gene.values[0]
         histo = h.values[0, 1:].astype(int)[: cdr3_length + 1]
-
         cdf_df_vjl = return_cdf(
             self.cdf_path, v_gene=v_gene, j_gene=j_gene, cdr3_length=cdr3_length
         )
