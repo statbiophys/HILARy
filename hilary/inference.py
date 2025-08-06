@@ -3,26 +3,33 @@
 from __future__ import annotations
 
 from multiprocessing import cpu_count
-from typing import Dict,  Tuple
 
 import numpy as np
 import pandas as pd
-pd.options.mode.chained_assignment = None  # default='warn'
 import structlog
-from scipy.cluster.hierarchy import fcluster, linkage as scipy_linkage
 from fastcluster import linkage as fast_linkage
+from scipy.cluster.hierarchy import fcluster
+from scipy.cluster.hierarchy import linkage as scipy_linkage
 from tqdm import tqdm
 
-from hilary.utils import apply_chunked_parallel, apply_parallel, p_required, group_mutations, create_classes
 from hilary.distance_matrix import DistanceMatrix
+from hilary.utils import (
+    apply_chunked_parallel,
+    apply_parallel,
+    create_classes,
+    group_mutations,
+    p_required,
+)
 
+pd.options.mode.chained_assignment = None  # default='warn'
 log = structlog.get_logger()
 
 NUM_RELIABLE_SEQ = 100
 SUFFICIENT_MUT_NUM = 3
 
+
 class HILARy:
-    """Optimized version of HILARy with improved performance."""
+    """Infer families using CDR3 and mutation information."""
 
     def __init__(
         self,
@@ -31,9 +38,9 @@ class HILARy:
         *,
         silent: bool = False,
         paired: bool = False,
-        chunk_size: int = 10000
+        chunk_size: int = 10000,
     ) -> None:
-        self.group = ["v_gene", "j_gene", "cdr3_length","cdr3_length_value"]
+        self.group = ["v_gene", "j_gene", "cdr3_length", "cdr3_length_value", "split_up_cluster"]
         self.use = ["cdr3", "alt_sequence_alignment", "mutation_count", "index"]
         self.alignment_length = len(df["alt_sequence_alignment"].values[0])
         self.threads = threads if threads > 0 else cpu_count()
@@ -44,9 +51,25 @@ class HILARy:
 
         self.classes.index = self.classes.class_id
 
+    def simulate_xs_ys(self, args:tuple) -> tuple[float, int]:
+        """Get thresholds for single linkage clustering.
 
-    def simulate_xs_ys(self, args) -> Tuple[float, int]:
-        """Optimized simulation with better memory management."""
+        Args:
+            args (tuple): A tuple containing the following elements:
+                - _: Unused argument.
+                - _: Unused argument.
+                - l (int): Length parameter.
+                - prevalence (float): Prevalence parameter.
+                - mutations (list): List of mutation counts.
+                - alignment_length (int): Length of the alignment.
+                - class_id (int): Identifier for the class.
+
+        Returns
+        -------
+            tuple: A tuple containing:
+                - float: The sorted zs value at the required prevalence percentile.
+                - int: The class identifier.
+        """
         rng = np.random.default_rng(seed=42)
         size = int(1e5)
         (_, _, _, mutations, alignment_length, class_id) = args
@@ -89,14 +112,23 @@ class HILARy:
         )
 
     def get_xy_thresholds(self, df: pd.DataFrame) -> None:
-        """Optimized threshold computation."""
+        """Compute xy_thresholds for each (v_gene,j_gene,cdr3_length) class.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+
+        Returns
+        -------
+            None
+        """
+        log.info("⏳ COMPUTING XY THRESHOLDS ⏳.")
         alignment_length = len(df["alt_sequence_alignment"].values[0])
         self.classes["alignment_length"] = alignment_length
 
         merge_cols = ["v_gene", "j_gene", "cdr3_length", "mutation_count"]
         class_cols = ["v_gene", "j_gene", "cdr3_length", "class_id", "alignment_length"]
 
-        merged = df[merge_cols].merge(self.classes[class_cols], how='left')
+        merged = df[merge_cols].merge(self.classes[class_cols], how="left")
 
         mutations_grouped = apply_chunked_parallel(
             merged.groupby("class_id"),
@@ -114,31 +146,54 @@ class HILARy:
             isint=True,
         )
 
-        thresholds_data = pd.DataFrame(result, columns=["xy_threshold", "class_id"]).set_index("class_id")
+        thresholds_data = pd.DataFrame(result, columns=["xy_threshold", "class_id"]).set_index(
+            "class_id"
+        )
         self.classes["xy_threshold"] = thresholds_data["xy_threshold"]
 
-    def single_linkage(self, indices: np.ndarray, dist: np.ndarray, threshold: float) -> Dict[int, int]:
-        """Optimized single linkage clustering."""
+    def single_linkage(
+        self, indices: np.ndarray, dist: np.ndarray, threshold: float
+    ) -> dict[int, int]:
+        """Map precise clusters to new precise AND sensitive clusters by merging clusters together.
+
+        Args:
+            indices (np.array): Indices of precise clusters.
+            dist (np.ndarray): Distances between precise clusters.
+            threshold (float): Threshold to merge two precise clusters if the distance is smaller.
+
+        Returns
+        -------
+            dict: Dictionary mapping precise clusters to their new clusters.
+        """
         if len(indices) <= 1:
             return dict(zip(indices, indices))
         try:
             clusters = fcluster(
-            fast_linkage(dist, method="single", preserve_input=False),
-            criterion="distance",
-            t=threshold,
+                fast_linkage(dist, method="single", preserve_input=False),
+                criterion="distance",
+                t=threshold,
             )
         except ValueError:
             clusters = fcluster(
-            scipy_linkage(dist, method="single"),
-            criterion="distance",
-            t=threshold,
+                scipy_linkage(dist, method="single"),
+                criterion="distance",
+                t=threshold,
             )
         return dict(zip(indices, clusters))
 
-    def class2pairs(self, args: Tuple[Tuple[str, str, str, int], pd.DataFrame]) -> pd.Series:
-        """Optimized clustering for small groups."""
+    def class2pairs(self, args: tuple[tuple[str, str, str, int,int], pd.DataFrame]) -> pd.Series:
+        """Infer clonal families for one small group.
+
+        Args:
+            args (Tuple[Tuple[str,str,int,int, int],pd.DataFrame]):
+            (Vgene,Jgene,cdr3length string, cdr3_length int, sensitive cluster),dataframe.
+
+        Returns
+        -------
+            pd.Series: Clonal family.
+        """
         df = args[1]
-        v_gene, j_gene, cdr3_length, cdr3_length_value = args[0]
+        v_gene, j_gene, cdr3_length, cdr3_length_value, _ = args[0]
         xy_threshold = self.classes.query(
             "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
         )["xy_threshold"].values[0]
@@ -151,33 +206,42 @@ class HILARy:
             cdr3_l=cdr3_length_value,
             alignment_length=self.alignment_length,
             df=df[["cdr3", "alt_sequence_alignment", "mutation_count"]],
-            threads=1  # Use single thread for small groups
+            threads=1,  # Use single thread for small groups
         )
         distances = dm.compute()
 
-        sl = self.single_linkage(
-            indices, distances, threshold=self.alignment_length + xy_threshold
-        )
+        sl = self.single_linkage(indices, distances, threshold=self.alignment_length + xy_threshold)
         return df["index"].map(sl)
 
-
     def infer(self, df: pd.DataFrame, size_threshold: int = 500) -> pd.DataFrame:
-        """Optimized family cluster inference."""
-        # Pre-compute byte arrays if not already done
+        """Infer family clusters.
 
-        # Group by class and separate small/large groups
+        Clustering is done differently depending on whether the sensitive cluster is large or not
+        to use parallelization in the most efficient way possible.
+
+        Args:
+            df(pd.DataFrame):Dataframe of sequences.
+
+        Returns
+        -------
+            df(pd.DataFrame): Dataframe with inferred clonal families in 'clone_id'.
+        """
+        log.info("⏳ INFERRING FAMILIES WITH FULL XY METHOD ⏳.")
         df_grouped = df.groupby(self.group)
         sizes = df_grouped.size()
 
         mask = sizes > size_threshold
         large_groups = sizes[mask].index
         small_groups = sizes[~mask].index
-
+        log.debug("Created small and large groups",
+                number_small_groups=len(small_groups),
+                number_large_groups=len(large_groups)
+                )
         df["family_cluster"] = np.nan
         df["index"] = df.index.values
 
         if len(small_groups) > 0:
-            log.info(f"Processing {len(small_groups)} small groups.")
+            log.debug("Processing small groups.", small_groups=len(small_groups))
             small_df = df[df[self.group].apply(tuple, axis=1).isin(small_groups)]
 
             family_clusters = apply_chunked_parallel(
@@ -190,7 +254,7 @@ class HILARy:
             df.loc[small_df.index, "family_cluster"] = family_clusters
 
         if len(large_groups) > 0:
-            log.info(f"Processing {len(large_groups)} large groups.")
+            log.debug("Processing large groups.", number=len(large_groups))
             large_df = df[df[self.group].apply(tuple, axis=1).isin(large_groups)]
             large_clusters = self._process_large_groups(large_df)
             for idx, cluster in large_clusters.items():
@@ -201,14 +265,22 @@ class HILARy:
 
         return df.drop(columns=["family_cluster", "index"])
 
-    def _process_large_groups(self, large_df: pd.DataFrame) -> Dict[int, int]:
-        """Process large groups with optimized distance computation."""
+    def _process_large_groups(self, large_df: pd.DataFrame) -> dict[int, int]:
+        """Infer large groups with optimized distance computation.
+
+        Args:
+            large_df (pd.DataFrame): Dataframe containinng large groups only.
+
+        Returns
+        -------
+            dict[int, int]: Dictionary mapping id to cluster.
+        """
         large_clusters = {}
 
         grouped_list = list(large_df.groupby(self.group))
 
         for g, grouped_df in tqdm(grouped_list, disable=self.silent):
-            v_gene, j_gene, cdr3_length, cdr3_length_value = g
+            v_gene, j_gene, cdr3_length, cdr3_length_value, _ = g
 
             xy_threshold = self.classes.query(
                 "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
