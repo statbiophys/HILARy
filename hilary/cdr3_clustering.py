@@ -6,14 +6,13 @@ import pandas as pd
 import structlog
 from atriegc import TrieNucl as Trie
 
-from hilary.utils import (
-    apply_chunked_parallel,
-)
+from hilary.utils import apply_chunked_parallel
 
 log = structlog.get_logger()
 
-NUM_RELIABLE_SEQ=100
-SUFFICIENT_MUT_NUM=3
+NUM_RELIABLE_SEQ = 100
+SUFFICIENT_MUT_NUM = 3
+
 
 class CDR3Clustering:
     """
@@ -91,10 +90,10 @@ class CDR3Clustering:
         -------
             pd.Series: Series with cluster labels.
         """
+        log.info("⏳ COMPUTING CDR3 CLUSTERS ⏳.")
         if group is None:
             group = ["v_gene", "j_gene", "cdr3_length"]
         use = [*group, "cdr3"]
-        log.debug("Inferring clusters.", group=group)
         df["cluster"] = apply_chunked_parallel(
             df[use].groupby(group),
             self.cluster,
