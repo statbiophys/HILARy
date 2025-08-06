@@ -81,14 +81,24 @@ class EM:
             Fitted prevalence and mu.
         """
         mu = 0.02 * self.l
-        rho = self.h[0] / (sum(self.h)+1e-6) * (1 + mu)
+        rho = self.h[0] / (sum(self.h) + 1e-6) * (1 + mu)
         theta = (max(min(1.0, rho), 0.1), mu)
         for _ in range(self.howmany):
             theta = self.discrete_maximization(theta)
         return theta
 
-    def discrete_mix(self, x, theta):
-        """Evaluate mixture distribution."""
+    def discrete_mix(self, x:np.array, theta:list[float])->np.array:
+        """Evaluate mixture distribution.
+
+        Args:
+            x (np.array): Support for the cdr3 pairwise distances.
+            theta (list[float]): [Prevalence, mutation rate].
+
+        Returns
+        -------
+        np.array
+            Distribution.
+        """
         rho, mu = theta
         return rho * mu**x * np.exp(-mu) / factorial(x) + (1 - rho) * self.const_p0[x]
 
@@ -106,6 +116,6 @@ class EM:
         float
             Root mean squared error of the normalized histogram.
         """
-        observed = self.h / (self.h.sum()+1e-6)
+        observed = self.h / (self.h.sum() + 1e-6)
         model = self.discrete_mix(self.b, theta)
         return np.sqrt(((observed - model) ** 2).sum())
