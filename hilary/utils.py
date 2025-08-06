@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 from functools import partial
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING, Any, Callable
-import random
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -26,6 +25,7 @@ log = structlog.get_logger(__name__)
 
 VERBOSE_DEBUG = 2
 VERBOSE_INFO = 1
+
 
 def cdf_to_pmf(cdf_values):
     """
@@ -47,6 +47,7 @@ def cdf_to_pmf(cdf_values):
     # PMF is the difference between consecutive CDF values
     return np.diff(cdf_values, prepend=[0])  # Prepend 0 for the first element
 
+
 def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd.DataFrame:
     """Return cdf distribution given VJl class.
 
@@ -61,7 +62,7 @@ def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd
         pd.DataFrame: _description_
     """
     if cdr3_length % 3 != 0:
-        cdr3_length = round(cdr3_length / 3) * 3 # round to the nearest multiple of 3
+        cdr3_length = round(cdr3_length / 3) * 3  # round to the nearest multiple of 3
     return pd.read_parquet(
         cdf_path,
         filters=[
@@ -71,7 +72,8 @@ def return_cdf(cdf_path: Path, v_gene: str, j_gene: str, cdr3_length: int) -> pd
         ],
     )
 
-def chunked_func(df_list:list[pd.DataFrame], func: Callable) -> pd.DataFrame:
+
+def chunked_func(df_list: list[pd.DataFrame], func: Callable) -> pd.DataFrame:
     """Apply a function to each element in a list and concatenates the results.
 
     Applies a given function `func` to each element `g` in the iterable `x` (usually a list
@@ -86,6 +88,7 @@ def chunked_func(df_list:list[pd.DataFrame], func: Callable) -> pd.DataFrame:
         pd.DataFrame: A concatenated DataFrame.
     """
     return pd.concat([func(df) for df in df_list])
+
 
 def apply_chunked_parallel(
     df_grouped: Iterable,
@@ -119,12 +122,13 @@ def apply_chunked_parallel(
     ]
     chunked_func_with_func = partial(chunked_func, func=func)
     return apply_parallel(
-            df_grouped_chunks,
-            chunked_func_with_func,
-            cpu_count=cpu_count,
-            silent=silent,
-            isint=isint,
-        ).sort_index()
+        df_grouped_chunks,
+        chunked_func_with_func,
+        cpu_count=cpu_count,
+        silent=silent,
+        isint=isint,
+    ).sort_index()
+
 
 def apply_parallel(
     df_grouped: list,
@@ -156,6 +160,7 @@ def apply_parallel(
         return pd.DataFrame()
     return pd.concat(ret_list)
 
+
 def count_mutations(args: tuple[int, pd.DataFrame]):
     """Compute & return Return mutation counts column for a given dataframe.
 
@@ -171,6 +176,7 @@ def count_mutations(args: tuple[int, pd.DataFrame]):
         lambda x: hamming(*x),
         axis=1,
     )
+
 
 def _preprocess(
     dataframe: pd.DataFrame,
@@ -217,7 +223,7 @@ def _preprocess(
         df.dropna(subset=["v_germline_alignment", "j_germline_alignment"], inplace=True)
         df["alt_germline_alignment"] = df["v_germline_alignment"] + df["j_germline_alignment"]
     df["cdr3_length"] = df["cdr3"].str.len().astype(str)
-    df["cdr3_length_value"]=df["cdr3_length"].astype(int)
+    df["cdr3_length_value"] = df["cdr3_length"].astype(int)
     if "mutation_count" not in df.columns:
         df["mutation_count"] = apply_parallel(
             df.groupby(["v_gene", "j_gene", "cdr3_length"]),
@@ -227,37 +233,42 @@ def _preprocess(
         )
     return df[usecols].dropna().astype({"cdr3_length": int}).query("cdr3_length>0")
 
-def preprocess(df: pd.DataFrame, df_light: pd.DataFrame | None = None, silent:bool=False, threads:int=1) -> pd.DataFrame:
-        """Remove non productive sequences from dataframe.
 
-        If df_light is not null then group VH, JH, VK and JK genes together and concatenate heavy
-        and light cdr3s.
+def preprocess(
+    df: pd.DataFrame, df_light: pd.DataFrame | None = None,threads: int = 1,*,silent: bool = False
+) -> pd.DataFrame:
+    """Remove non productive sequences from dataframe.
 
-        Args:
-            df (pd.DataFrame): dataframe of heavy chain sequences.
-            df_light (pd.DataFrame): dataframe of light chain sequences.
+    If df_light is not null then group VH, JH, VK and JK genes together and concatenate heavy
+    and light cdr3s.
 
-        Returns
-        -------
-            pd.Dataframe: Dataframe self.df containing all sequences.
-        """
-        df = _preprocess(
-            df,
-            silent=silent,
-            threads=threads,
-        )
-        if df_light is not None:
-            df_light = _preprocess(df_light, silent=silent, threads=threads)
-            for column in df.columns:
-                if column == "sequence_id":
-                    continue
-                df[column + "_h"] = df[column]
-                df[column + "_k"] = df_light[column]
-                if column in ["mutation_count","cdr3_length_value"]:
-                    df[column] = df[column + "_h"] + df[column + "_k"]
-                else:
-                    df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
-        return df
+    Args:
+        df (pd.DataFrame): dataframe of heavy chain sequences.
+        df_light (pd.DataFrame): dataframe of light chain sequences.
+
+    Returns
+    -------
+        pd.Dataframe: Dataframe self.df containing all sequences.
+    """
+    log.info("⏳ PREPROCESSING ⏳")
+    df = _preprocess(
+        df,
+        silent=silent,
+        threads=threads,
+    )
+    if df_light is not None:
+        df_light = _preprocess(df_light, silent=silent, threads=threads)
+        for column in df.columns:
+            if column == "sequence_id":
+                continue
+            df[column + "_h"] = df[column]
+            df[column + "_k"] = df_light[column]
+            if column in ["mutation_count", "cdr3_length_value"]:
+                df[column] = df[column + "_h"] + df[column + "_k"]
+            else:
+                df[column] = df[column + "_h"].astype(str) + "," + df[column + "_k"].astype(str)
+    return df
+
 
 def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     """Create VJl classes.
@@ -269,16 +280,24 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     -------
         pd.DataFrame: Dataframe with classes.
     """
-    log.info("CREATING CLASSES")
+    log.info("⏳ CREATING CLASSES ⏳")
     classes = (
-        df.groupby(["v_gene", "j_gene", "cdr3_length","cdr3_length_value"]).size().to_frame("sequence_count")
+        df.groupby(["v_gene", "j_gene", "cdr3_length", "cdr3_length_value"])
+        .size()
+        .to_frame("sequence_count")
     ).reset_index()
     classes["pair_count"] = classes["sequence_count"].apply(lambda x: binom(x, 2)).astype(int)
-    l_classes = classes.groupby(["cdr3_length","cdr3_length_value"])[["sequence_count", "pair_count"]].sum().reset_index()
+    l_classes = (
+        classes.groupby(["cdr3_length", "cdr3_length_value"])[["sequence_count", "pair_count"]]
+        .sum()
+        .reset_index()
+    )
     l_classes["v_gene"] = "None"
     l_classes["j_gene"] = "None"
     jl_classes = (
-        classes.groupby(["j_gene", "cdr3_length","cdr3_length_value"])[["sequence_count", "pair_count"]]
+        classes.groupby(["j_gene", "cdr3_length", "cdr3_length_value"])[
+            ["sequence_count", "pair_count"]
+        ]
         .sum()
         .reset_index()
     )
@@ -291,6 +310,7 @@ def create_classes(df: pd.DataFrame) -> pd.Dataframe:
     classes.reset_index(drop=True, inplace=True)
     return classes
 
+
 def save_dataframe(dataframe: pd.DataFrame, save_path: Path) -> None:
     """Save dataframe depending on suffix.
 
@@ -302,6 +322,7 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path) -> None:
     ------
         ValueError: save_path suffix not supported.
     """
+    log.info("SAVING RESULTS", output_path=save_path.as_posix())
     suffix = save_path.suffix
     if suffix == ".xlsx":
         dataframe.to_excel(save_path)
@@ -317,6 +338,7 @@ def save_dataframe(dataframe: pd.DataFrame, save_path: Path) -> None:
     else:
         msg = f"Format {suffix} not supported."
         raise ValueError(msg)
+
 
 def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
     """Read input file.
@@ -363,6 +385,7 @@ def read_input(input_path: Path, config: Path | None = None) -> pd.DataFrame:
                 dataframe[column_dict[key]] = dataframe[key]
     return dataframe
 
+
 def pairwise_evaluation(
     df: pd.DataFrame, partition: str, truth: str = "ground_truth"
 ) -> tuple[float, float]:
@@ -389,7 +412,8 @@ def pairwise_evaluation(
     sensitivity = tp / pos
     return precision, sensitivity
 
-def p_required(prevalence:float, pi:float=0.9)->float:
+
+def p_required(prevalence: float, pi: float = 0.9) -> float:
     """Get the fallout from prevalence and desired precision.
 
     Args:
@@ -402,7 +426,8 @@ def p_required(prevalence:float, pi:float=0.9)->float:
     """
     return prevalence / (1 + 1e-5 - prevalence) * (1 - pi) / pi
 
-def get_logger(verbose:int, *, use_json:bool)->Any:
+
+def get_logger(verbose: int, *, use_json: bool) -> Any:
     """Return logger.
 
     Args:
@@ -435,11 +460,19 @@ def get_logger(verbose:int, *, use_json:bool)->Any:
     )
     return structlog.get_logger()
 
-def group_mutations(args: Tuple[int, pd.DataFrame]) -> pd.DataFrame:
+
+def group_mutations(args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
     """Get list of mutations for a given VJL class."""
     _, df = args
     v_gene, j_gene, cdr3_length, _, class_id, alignment_length = df.iloc[0]
     mutations = df["mutation_count"].values
-    return pd.DataFrame([
-        v_gene, j_gene, cdr3_length, mutations, alignment_length, class_id,
-    ]).T
+    return pd.DataFrame(
+        [
+            v_gene,
+            j_gene,
+            cdr3_length,
+            mutations,
+            alignment_length,
+            class_id,
+        ]
+    ).T

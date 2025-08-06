@@ -61,7 +61,7 @@ class Apriori:
         self.model = model
 
         if not paired:
-            if self.model=="human_B_heavy":
+            if self.model == "human_B_heavy":
                 self.lengths = np.arange(15, 81 + 3, 3).astype(int)
             elif "human" in self.model:
                 self.lengths = np.arange(15, 63 + 3, 3).astype(int)
@@ -71,22 +71,23 @@ class Apriori:
                 msg = f"Unknown model: {self.model}"
                 raise ValueError(msg)
             self.cdf_path = Path(__file__).parent / f"cdfs/{model}.parquet"
+        elif "human" in self.model:
+            self.lengths = np.arange(30, 141 + 3, 3).astype(int)
+            self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
+        elif "mouse" in self.model:
+            self.lengths = np.arange(21, 102 + 3, 3).astype(int)
+            self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
         else:
-            if "human" in self.model:
-                self.lengths = np.arange(30, 141 + 3, 3).astype(int)
-                self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
-            elif "mouse" in self.model:
-                self.lengths = np.arange(21, 102 + 3, 3).astype(int)
-                self.cdf_path = Path(__file__).parent / f"cdfs/{self.model}.parquet"
-            else:
-                msg = f"Unknown model: {self.model}"
-                raise ValueError(msg)
+            msg = f"Unknown model: {self.model}"
+            raise ValueError(msg)
         self.classes = pd.DataFrame()
 
     def vjls2x(self, args: tuple[int, pd.DataFrame]) -> pd.DataFrame:
         """Compute histogram for a given VJl class."""
         i, df = args
-        c=df.sample(frac=min(1,np.sqrt(1e5/df.pair_count.values[0])), random_state=42).reset_index(drop=True)
+        c = df.sample(
+            frac=min(1, np.sqrt(1e5 / df.pair_count.values[0])), random_state=42
+        ).reset_index(drop=True)
         xs = [hamming(s1, s2) for s1, s2 in combinations(c["cdr3"].values, 2)]
 
         return pd.DataFrame(
@@ -144,6 +145,7 @@ class Apriori:
             pd.DataFrame: Histogram of distances for all large classes.
         """
         # add cdr3_length_value to classes for computation
+        log.info("⏳ COMPUTING HISTOGRAMS ⏳.")
         hs_vjl = self.compute_allvjl(df)
         self.histograms = hs_vjl.sort_values(
             "class_id",
@@ -176,7 +178,7 @@ class Apriori:
         if not cdf_df_vjl.empty:
             null_model_used = "vjl"
             cdf = cdf_df_vjl
-        elif  not cdf_df_jl.empty:
+        elif not cdf_df_jl.empty:
             null_model_used = "jl"
             cdf = cdf_df_jl
         elif not cdf_df_l.empty:
@@ -239,10 +241,10 @@ class Apriori:
 
     def get_parameters(self) -> None:
         """Compute prevalence and mean distance for all classes."""
+        log.info("⏳ COMPUTING PARAMETERS ⏳.")
         if self.histograms.empty:
             msg = "Histogram is empty. Please run get_histograms method."
             raise ValueError(msg)
-        log.debug("Computing prevalence and mean distance for all classes")
         parameters = apply_chunked_parallel(
             self.histograms.groupby(["class_id"]),
             self.estimate,
