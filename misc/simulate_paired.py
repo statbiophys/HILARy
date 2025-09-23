@@ -12,9 +12,9 @@ from numpy.random import zipf
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.simulate import Simulator
-from hilary.utils import applyParallel
-from hilary.utils_simulate import mutate, mutate2, nt2aa
+from simulate import Simulator
+from utils_simulate import mutate, mutate2, nt2aa
+from hilary.utils import apply_parallel
 
 
 class SimulatorPaired:
@@ -244,7 +244,7 @@ class SimulatorPaired:
             "j_gene_light",
             "v_gene_light",
         ]
-        return applyParallel(
+        return apply_parallel(
             self.rootsSmall.groupby(cols), small_family_parallel_paired, cpuCount=cpu_count()
         )
 

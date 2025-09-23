@@ -42,7 +42,6 @@ class HILARy:
     ) -> None:
         self.group = ["v_gene", "j_gene", "cdr3_length", "cdr3_length_value", "split_up_cluster"]
         self.use = ["cdr3", "alt_sequence_alignment", "mutation_count", "index"]
-        self.alignment_length = len(df["alt_sequence_alignment"].values[0])
         self.threads = threads if threads > 0 else cpu_count()
         self.silent = silent
         self.paired = paired
@@ -202,15 +201,16 @@ class HILARy:
         df["index"] = indices
         if len(indices) <= 1:
             return df["index"]
+        alignment_length=len(df["alt_sequence_alignment"].values[0])
         dm = DistanceMatrix(
             cdr3_l=cdr3_length_value,
-            alignment_length=self.alignment_length,
+            alignment_length=alignment_length,
             df=df[["cdr3", "alt_sequence_alignment", "mutation_count"]],
             threads=1,  # Use single thread for small groups
         )
         distances = dm.compute()
 
-        sl = self.single_linkage(indices, distances, threshold=self.alignment_length + xy_threshold)
+        sl = self.single_linkage(indices, distances, threshold=alignment_length + xy_threshold)
         return df["index"].map(sl)
 
     def infer(self, df: pd.DataFrame, size_threshold: int = 500) -> pd.DataFrame:
@@ -285,9 +285,10 @@ class HILARy:
             xy_threshold = self.classes.query(
                 "v_gene==@v_gene and j_gene==@j_gene and cdr3_length==@cdr3_length"
             )["xy_threshold"].values[0]
+            alignment_length = len(large_df["alt_sequence_alignment"].values[0])
             dm = DistanceMatrix(
                 cdr3_l=cdr3_length_value,
-                alignment_length=self.alignment_length,
+                alignment_length=alignment_length,
                 df=grouped_df[["cdr3", "alt_sequence_alignment", "mutation_count"]],
                 threads=self.threads,
             )
@@ -296,7 +297,7 @@ class HILARy:
             dct = self.single_linkage(
                 indices=grouped_df.index,
                 dist=distances,
-                threshold=self.alignment_length + xy_threshold,
+                threshold=alignment_length + xy_threshold,
             )
 
             large_clusters.update(dct)

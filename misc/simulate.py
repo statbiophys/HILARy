@@ -16,8 +16,8 @@ from sonnia.utils import gene_to_num_str
 from textdistance import hamming
 from tqdm import tqdm
 
-from hilary.utils import applyParallel
-from hilary.utils_simulate import mutate, mutate2, nt2aa
+from hilary.utils import apply_parallel
+from utils_simulate import mutate, mutate2, nt2aa
 
 
 class Simulator:
@@ -114,7 +114,6 @@ class Simulator:
 
         self.small = pd.read_csv(mut_directory + "small_spectra.csv.gz")
         self.large = pd.read_csv(mut_directory + "large_spectra.csv.gz")
-
         ns = zipf(alpha, size=int(nbOfFamilies * ratios[0]))
         ns = np.concatenate([ns, np.ones(int(nbOfFamilies * ratios[1]))]).astype(int)
         # clip max family size
@@ -125,8 +124,12 @@ class Simulator:
             roots= self.generate_naive(
                 nbOfFamilies, cdr3_selection, available_j=available_j, available_v=available_v
             )
+        print("roots")
+        print(roots)
         self.rootsLarge, self.rootsSmall = roots[: self.nbLarge], roots[self.nbLarge :]
         self.familiesLarge = self.largeFamilies(self.rootsLarge)
+        print("large families")
+        print(self.familiesLarge)
         if self.nbLarge > 0:
             self.familiesLarge["family"] = self.familiesLarge["family"] + 1
         self.familiesSmall = self.smallFamilies()
@@ -167,9 +170,9 @@ class Simulator:
         df[["sequence", "cdr3_anchor"]] = (
             df[["v_gene", "j_gene", "cdr3"]]
             .apply(self.assignSequence, axis=1, result_type="expand")
-            .dropna()
         ) ## hiding a bug here, the dropna shouldn't be necessary
         # here the reconstruction doesn't have to be a multiple of three, so I enforce it
+        df=df.dropna()
         df['sequence']=df['sequence'].apply(lambda x: x[:(len(x)//3)*3])
         ## hiding a bug here, they should be all productive
         df=df.loc[df.sequence.apply(lambda x: "*" not in nt2aa(x))].reset_index(drop=True)
@@ -211,10 +214,10 @@ class Simulator:
             spectra_df = pd.concat([spectra_df, out])
         spectra_df = spectra_df.sort_values("family_size").reset_index(drop=True)
         self.rootsSmall["mutation_spectrum"] = spectra_df["mutation_spectrum"]
-        return applyParallel(
+        return apply_parallel(
             self.rootsSmall.groupby(["family_size", "cdr3_length", "j_gene", "v_gene"]),
             small_family_parallel,
-            cpuCount=cpu_count(),
+            cpu_count=cpu_count(),
         )
 
     def largeFamilies(self, rootsLarge):
@@ -246,11 +249,11 @@ class Simulator:
         families = pd.DataFrame()
         print("Generate large families.")
         for index, (v, j, l, _, naive, anchor) in tqdm(rootsLarge.iterrows()):
+            anchor = int(anchor)
             familySize, configurations, nbs = spectra.loc[index]
             which = np.array([list(c) for c in configurations.split(":")]).astype(int)
             howMany = np.array(nbs.split(":")).astype(int)
             order = np.argsort(-which.sum(axis=1))
-
             family = pd.DataFrame()
             family["sequence"] = mutateFamily(naive, familySize, which[order], howMany[order])
             family["germline"] = naive
