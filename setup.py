@@ -5,8 +5,8 @@ from setuptools import find_packages, setup
 
 setup(
     install_requires=[
-        "setuptools>=56,<57",
-        "numpy>=1.20.0,<2",
+        "setuptools>=56",
+        "numpy>=1.20.0,<3",
         "openpyxl>=3.1,<4",
         "pandas>=2.2,<3",
         "scipy>=1.6,<2",
