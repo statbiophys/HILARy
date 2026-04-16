@@ -191,7 +191,9 @@ class Apriori:
         """
         # add cdr3_length_value to classes for computation
         if self.paired:
-            self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
+            self.classes["cdr3_length_value"] = self.classes.cdr3_length.apply(
+                        lambda x: int(float(x.split(",")[0])) + int(float(x.split(",")[1]))
+            )
         else:
             self.classes["cdr3_length_value"] = self.classes.cdr3_length.astype(int)
         hs_vjl = self.compute_allvjl(df)
